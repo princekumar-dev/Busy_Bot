@@ -21,6 +21,8 @@ export function EvoQRConnector() {
     const API_URL = import.meta.env.VITE_EVO_API_URL;
     const API_KEY = import.meta.env.VITE_EVO_API_KEY;
     const BOT_NAME = import.meta.env.VITE_EVO_BOT_NAME || "busybot";
+    const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+    const WEBHOOK_URL = `${SUPABASE_URL}/functions/v1/webhook`;
 
     const getBaseUrl = () => {
         const url = API_URL || "";
@@ -31,6 +33,35 @@ export function EvoQRConnector() {
         "Content-Type": "application/json",
         "apikey": API_KEY,
     });
+
+    // Register webhook with Evolution API so incoming messages are forwarded to our edge function
+    const registerWebhook = useCallback(async () => {
+        try {
+            const baseUrl = getBaseUrl();
+            const res = await fetch(`${baseUrl}/webhook/set/${BOT_NAME}`, {
+                method: "POST",
+                headers: getHeaders(),
+                body: JSON.stringify({
+                    enabled: true,
+                    url: WEBHOOK_URL,
+                    webhookByEvents: false,
+                    webhookBase64: false,
+                    events: [
+                        "MESSAGES_UPSERT",
+                        "CONNECTION_UPDATE",
+                    ],
+                }),
+            });
+            if (res.ok) {
+                console.log("Webhook registered successfully at", WEBHOOK_URL);
+            } else {
+                const errText = await res.text();
+                console.error("Failed to register webhook:", res.status, errText);
+            }
+        } catch (err) {
+            console.error("Error registering webhook:", err);
+        }
+    }, [API_URL, API_KEY, BOT_NAME, WEBHOOK_URL]);
 
     // Stop all polling timers
     const stopPolling = useCallback(() => {
@@ -73,6 +104,8 @@ export function EvoQRConnector() {
                 stopPolling();
                 setQrCode(null);
                 setStatus("connected");
+                // Register webhook so incoming messages are forwarded to our backend
+                await registerWebhook();
                 toast({
                     title: "Device Linked!",
                     description: "WhatsApp is now connected to BusyBot.",
@@ -133,6 +166,8 @@ export function EvoQRConnector() {
             if (alreadyConnected) {
                 setStatus("connected");
                 setLoading(false);
+                // Ensure webhook is registered even if already connected
+                await registerWebhook();
                 return;
             }
 
@@ -151,6 +186,16 @@ export function EvoQRConnector() {
                         integration: "WHATSAPP-BAILEYS",
                         token: API_KEY,
                         qrcode: true,
+                        groupsIgnore: true,
+                        readMessages: true,
+                        alwaysOnline: true,
+                        webhook: {
+                            url: WEBHOOK_URL,
+                            enabled: true,
+                            webhookByEvents: false,
+                            webhookBase64: false,
+                            events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE"],
+                        },
                     }),
                 });
 
