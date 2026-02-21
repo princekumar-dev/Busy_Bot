@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Settings, Save, Volume2, Bell } from "lucide-react";
+import { EvoQRConnector } from "@/components/EvoQRConnector";
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -71,7 +72,11 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <div className="space-y-6">
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* API QR Connection - Spans full width */}
+        <div className="md:col-span-2">
+          <EvoQRConnector />
+        </div>
         {/* Voice Reply */}
         <div className="glass rounded-xl p-6">
           <div className="flex items-center gap-3 mb-4">
@@ -116,16 +121,18 @@ export default function SettingsPage() {
           </p>
         </div>
 
-        <Button onClick={handleSave} disabled={saving} className="w-full gradient-primary font-display font-semibold text-primary-foreground glow">
-          {saving ? (
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
-          ) : (
-            <>
-              <Save className="mr-2 h-4 w-4" />
-              Save Settings
-            </>
-          )}
-        </Button>
+        <div className="md:col-span-2">
+          <Button onClick={handleSave} disabled={saving} className="w-full gradient-primary font-display font-semibold text-primary-foreground glow">
+            {saving ? (
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+            ) : (
+              <>
+                <Save className="mr-2 h-4 w-4" />
+                Save Settings
+              </>
+            )}
+          </Button>
+        </div>
       </div>
     </div>
   );
