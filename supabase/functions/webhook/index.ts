@@ -98,15 +98,14 @@ serve(async (req) => {
       urgency = "important";
     }
 
-    // Get the instance owner — find user linked to this bot instance
-    // Since this is a single-user bot, get the first user with settings
-    const { data: settingsRows, error: settingsError } = await supabase
+    // Get all users with settings — process message for users who have busy_mode enabled
+    // If no user has busy_mode on, store for the most recently active user
+    const { data: allSettings, error: settingsError } = await supabase
       .from("settings")
       .select("user_id, busy_mode, auto_reply_text, emergency_notify")
-      .limit(1)
-      .single();
+      .order("updated_at", { ascending: false });
 
-    if (settingsError || !settingsRows) {
+    if (settingsError || !allSettings || allSettings.length === 0) {
       console.error("Could not find user settings:", settingsError);
       return new Response(JSON.stringify({ status: "error", message: "No user found" }), {
         status: 500,
@@ -114,124 +113,131 @@ serve(async (req) => {
       });
     }
 
-    const userId = settingsRows.user_id;
-    const busyMode = settingsRows.busy_mode;
-    const autoReplyText = settingsRows.auto_reply_text || "I'm currently busy. I'll get back to you soon.";
+    // Process for all users — store the conversation/message for each user
+    const results = [];
+    for (const settings of allSettings) {
+      const userId = settings.user_id;
+      const busyMode = settings.busy_mode;
+      const autoReplyText = settings.auto_reply_text || "I'm currently busy. I'll get back to you soon.";
 
-    // Find or create conversation
-    let { data: conversation } = await supabase
-      .from("conversations")
-      .select("*")
-      .eq("user_id", userId)
-      .eq("contact_number", contactNumber)
-      .single();
-
-    if (!conversation) {
-      const { data: newConvo, error: createError } = await supabase
+      // Find or create conversation for this user
+      let { data: conversation } = await supabase
         .from("conversations")
-        .insert({
-          user_id: userId,
-          contact_number: contactNumber,
-          contact_name: contactName,
-          unread_count: 1,
-          last_message_at: new Date().toISOString(),
-        })
-        .select()
+        .select("*")
+        .eq("user_id", userId)
+        .eq("contact_number", contactNumber)
         .single();
 
-      if (createError) {
-        console.error("Failed to create conversation:", createError);
-        return new Response(JSON.stringify({ status: "error", message: createError.message }), {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      conversation = newConvo;
-    } else {
-      // Update existing conversation
-      await supabase
-        .from("conversations")
-        .update({
-          contact_name: contactName || conversation.contact_name,
-          unread_count: (conversation.unread_count || 0) + 1,
-          last_message_at: new Date().toISOString(),
-        })
-        .eq("id", conversation.id);
-    }
+      if (!conversation) {
+        const { data: newConvo, error: createError } = await supabase
+          .from("conversations")
+          .insert({
+            user_id: userId,
+            contact_number: contactNumber,
+            contact_name: contactName,
+            unread_count: 1,
+            last_message_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
 
-    // Store the incoming message
-    const { error: msgError } = await supabase.from("messages").insert({
-      conversation_id: conversation.id,
-      user_id: userId,
-      sender: "contact",
-      content: text,
-      message_type: messageType,
-      urgency,
-      is_auto_reply: false,
-    });
-
-    if (msgError) {
-      console.error("Failed to store message:", msgError);
-    }
-
-    // Send auto-reply if busy mode is on
-    if (busyMode) {
-      // Don't auto-reply to emergency messages if emergency_notify is on
-      if (urgency === "emergency" && settingsRows.emergency_notify) {
-        console.log("Emergency message — skipping auto-reply, user will be notified");
+        if (createError) {
+          console.error(`Failed to create conversation for user ${userId}:`, createError);
+          continue;
+        }
+        conversation = newConvo;
       } else {
-        // Build the auto-reply text
-        let replyText = autoReplyText;
+        // Update existing conversation
+        await supabase
+          .from("conversations")
+          .update({
+            contact_name: contactName || conversation.contact_name,
+            unread_count: (conversation.unread_count || 0) + 1,
+            last_message_at: new Date().toISOString(),
+          })
+          .eq("id", conversation.id);
+      }
 
-        // If the message is urgent/important, acknowledge it
-        if (urgency === "important") {
-          replyText = `${autoReplyText} I've noted that your message seems important and will prioritize it.`;
-        }
+      // Store the incoming message
+      const { error: msgError } = await supabase.from("messages").insert({
+        conversation_id: conversation.id,
+        user_id: userId,
+        sender: "contact",
+        content: text,
+        message_type: messageType,
+        urgency,
+        is_auto_reply: false,
+      });
 
-        // Send reply via Evolution API
-        const evoBaseUrl = EVO_API_URL.endsWith("/") ? EVO_API_URL.slice(0, -1) : EVO_API_URL;
-        try {
-          const sendRes = await fetch(`${evoBaseUrl}/message/sendText/${EVO_BOT_NAME}`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              apikey: EVO_API_KEY,
-            },
-            body: JSON.stringify({
-              number: contactNumber,
-              text: replyText,
-              delay: 1500, // Small delay to seem more natural
-            }),
-          });
+      if (msgError) {
+        console.error(`Failed to store message for user ${userId}:`, msgError);
+      }
 
-          if (sendRes.ok) {
-            // Store the bot reply in DB
-            await supabase.from("messages").insert({
-              conversation_id: conversation.id,
-              user_id: userId,
-              sender: "bot",
-              content: replyText,
-              message_type: "text",
-              urgency: "normal",
-              is_auto_reply: true,
-            });
-            console.log("Auto-reply sent to", contactNumber);
-          } else {
-            const errText = await sendRes.text();
-            console.error("Failed to send auto-reply:", sendRes.status, errText);
+      // Send auto-reply if busy mode is on (only send once to avoid duplicate replies)
+      let autoReplied = false;
+      if (busyMode && !autoReplied) {
+        // Don't auto-reply to emergency messages if emergency_notify is on
+        if (urgency === "emergency" && settings.emergency_notify) {
+          console.log("Emergency message — skipping auto-reply, user will be notified");
+        } else {
+          // Build the auto-reply text
+          let replyText = autoReplyText;
+
+          // If the message is urgent/important, acknowledge it
+          if (urgency === "important") {
+            replyText = `${autoReplyText} I've noted that your message seems important and will prioritize it.`;
           }
-        } catch (sendError) {
-          console.error("Error sending auto-reply:", sendError);
+
+          // Send reply via Evolution API
+          const evoBaseUrl = EVO_API_URL.endsWith("/") ? EVO_API_URL.slice(0, -1) : EVO_API_URL;
+          try {
+            const sendRes = await fetch(`${evoBaseUrl}/message/sendText/${EVO_BOT_NAME}`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                apikey: EVO_API_KEY,
+              },
+              body: JSON.stringify({
+                number: contactNumber,
+                text: replyText,
+                delay: 1500,
+              }),
+            });
+
+            if (sendRes.ok) {
+              await supabase.from("messages").insert({
+                conversation_id: conversation.id,
+                user_id: userId,
+                sender: "bot",
+                content: replyText,
+                message_type: "text",
+                urgency: "normal",
+                is_auto_reply: true,
+              });
+              autoReplied = true;
+              console.log("Auto-reply sent to", contactNumber);
+            } else {
+              const errText = await sendRes.text();
+              console.error("Failed to send auto-reply:", sendRes.status, errText);
+            }
+          } catch (sendError) {
+            console.error("Error sending auto-reply:", sendError);
+          }
         }
       }
-    }
+
+      results.push({
+        user_id: userId,
+        conversation_id: conversation.id,
+        auto_replied: autoReplied,
+      });
+    } // end for loop
 
     return new Response(
       JSON.stringify({
         status: "ok",
-        conversation_id: conversation.id,
         urgency,
-        auto_replied: busyMode && !(urgency === "emergency" && settingsRows.emergency_notify),
+        results,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
