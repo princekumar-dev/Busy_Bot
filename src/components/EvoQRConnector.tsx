@@ -1,8 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
 import { RefreshCcw, QrCode, Smartphone, Plug, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+
+const QR_REFRESH_INTERVAL = 15_000; // Refresh QR every 15s (WhatsApp QR expires in ~20s)
+const STATUS_POLL_INTERVAL = 3_000; // Poll connection state every 3s after QR is shown
 
 export function EvoQRConnector() {
     const { toast } = useToast();
@@ -11,9 +14,99 @@ export function EvoQRConnector() {
     const [status, setStatus] = useState<"idle" | "connecting" | "connected" | "error">("idle");
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+    const qrRefreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+    const statusPollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+    const isMounted = useRef(true);
+
     const API_URL = import.meta.env.VITE_EVO_API_URL;
     const API_KEY = import.meta.env.VITE_EVO_API_KEY;
     const BOT_NAME = import.meta.env.VITE_EVO_BOT_NAME || "busybot";
+
+    const getBaseUrl = () => {
+        const url = API_URL || "";
+        return url.endsWith("/") ? url.slice(0, -1) : url;
+    };
+
+    const getHeaders = (): Record<string, string> => ({
+        "Content-Type": "application/json",
+        "apikey": API_KEY,
+    });
+
+    // Stop all polling timers
+    const stopPolling = useCallback(() => {
+        if (qrRefreshTimer.current) {
+            clearInterval(qrRefreshTimer.current);
+            qrRefreshTimer.current = null;
+        }
+        if (statusPollTimer.current) {
+            clearInterval(statusPollTimer.current);
+            statusPollTimer.current = null;
+        }
+    }, []);
+
+    // Poll the connection state to detect when the phone successfully links
+    const checkConnectionState = useCallback(async (): Promise<boolean> => {
+        try {
+            const res = await fetch(`${getBaseUrl()}/instance/connectionState/${BOT_NAME}`, {
+                method: "GET",
+                headers: getHeaders(),
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (data?.instance?.state === "open") {
+                    return true;
+                }
+            }
+        } catch {
+            // Silently ignore polling errors
+        }
+        return false;
+    }, [API_URL, API_KEY, BOT_NAME]);
+
+    // Start polling connection state after a QR code is displayed
+    const startStatusPolling = useCallback(() => {
+        if (statusPollTimer.current) clearInterval(statusPollTimer.current);
+
+        statusPollTimer.current = setInterval(async () => {
+            const connected = await checkConnectionState();
+            if (connected && isMounted.current) {
+                stopPolling();
+                setQrCode(null);
+                setStatus("connected");
+                toast({
+                    title: "Device Linked!",
+                    description: "WhatsApp is now connected to BusyBot.",
+                });
+            }
+        }, STATUS_POLL_INTERVAL);
+    }, [checkConnectionState, stopPolling, toast]);
+
+    // Fetch a fresh QR code from the connect endpoint
+    const fetchNewQR = useCallback(async () => {
+        const baseUrl = getBaseUrl();
+        const headers = getHeaders();
+
+        const connectRes = await fetch(`${baseUrl}/instance/connect/${BOT_NAME}`, {
+            method: "GET",
+            headers,
+        });
+
+        if (!connectRes.ok) {
+            const errBody = await connectRes.text();
+            throw new Error(`Failed to connect: ${connectRes.status} ${errBody}`);
+        }
+
+        const data = await connectRes.json();
+        console.log("Evolution API connect response:", data);
+
+        // Evolution API v2 returns { code, pairingCode, count }
+        // "code" is the QR code data string for WhatsApp Web linking
+        const qr = data?.code || data?.base64 || data?.qrcode;
+        if (!qr) {
+            throw new Error("QR code not found in response.");
+        }
+        return qr as string;
+    }, [API_URL, API_KEY, BOT_NAME]);
 
     const fetchQR = async () => {
         if (!API_URL || !API_KEY) {
@@ -25,36 +118,30 @@ export function EvoQRConnector() {
             return;
         }
 
+        stopPolling();
         setLoading(true);
         setStatus("connecting");
         setErrorMessage(null);
         setQrCode(null);
 
-        // Normalize URL
-        const baseUrl = API_URL.endsWith('/') ? API_URL.slice(0, -1) : API_URL;
-
-        const headers: Record<string, string> = {
-            "Content-Type": "application/json",
-            "apikey": API_KEY,
-        };
+        const baseUrl = getBaseUrl();
+        const headers = getHeaders();
 
         try {
-            // First try to check instance connection state (Evolution API v2)
+            // 1. Check if already connected
+            const alreadyConnected = await checkConnectionState();
+            if (alreadyConnected) {
+                setStatus("connected");
+                setLoading(false);
+                return;
+            }
+
+            // 2. Ensure instance exists — create if needed
             const statusRes = await fetch(`${baseUrl}/instance/connectionState/${BOT_NAME}`, {
                 method: "GET",
                 headers,
             });
 
-            if (statusRes.ok) {
-                const statusData = await statusRes.json();
-                if (statusData?.instance?.state === "open") {
-                    setStatus("connected");
-                    setLoading(false);
-                    return;
-                }
-            }
-
-            // If instance doesn't exist (404), create it first
             if (statusRes.status === 404) {
                 const createRes = await fetch(`${baseUrl}/instance/create`, {
                     method: "POST",
@@ -63,7 +150,7 @@ export function EvoQRConnector() {
                         instanceName: BOT_NAME,
                         integration: "WHATSAPP-BAILEYS",
                         token: API_KEY,
-                        qrcode: false,
+                        qrcode: true,
                     }),
                 });
 
@@ -71,33 +158,48 @@ export function EvoQRConnector() {
                     const errBody = await createRes.text();
                     throw new Error(`Failed to create instance: ${createRes.status} ${errBody}`);
                 }
+
+                const createData = await createRes.json();
+                console.log("Evolution API create response:", createData);
+
+                // If create already returned a QR (qrcode: true), use it
+                const immediateQR = createData?.qrcode?.code || createData?.qrcode?.base64 || createData?.code;
+                if (immediateQR) {
+                    setQrCode(immediateQR);
+                    setStatus("idle");
+                    setLoading(false);
+                    startStatusPolling();
+                    // Start auto-refresh timer for QR
+                    qrRefreshTimer.current = setInterval(async () => {
+                        try {
+                            const newQR = await fetchNewQR();
+                            if (isMounted.current) setQrCode(newQR);
+                        } catch (err) {
+                            console.warn("QR auto-refresh failed:", err);
+                        }
+                    }, QR_REFRESH_INTERVAL);
+                    return;
+                }
             }
 
-            // Connect the instance and fetch the QR code
-            const connectRes = await fetch(`${baseUrl}/instance/connect/${BOT_NAME}`, {
-                method: "GET",
-                headers,
-            });
-
-            if (!connectRes.ok) {
-                const errBody = await connectRes.text();
-                throw new Error(`Failed to connect: ${connectRes.status} ${errBody}`);
-            }
-
-            const data = await connectRes.json();
-
-            // Evolution API v2 connect returns { code, pairingCode, count }
-            if (data?.code) {
-                setQrCode(data.code);
-            } else if (data?.base64) {
-                setQrCode(data.base64);
-            } else if (data?.qrcode) {
-                setQrCode(data.qrcode);
-            } else {
-                throw new Error("QR code not found in response.");
-            }
-
+            // 3. Fetch QR code via connect endpoint
+            const qr = await fetchNewQR();
+            setQrCode(qr);
             setStatus("idle");
+
+            // 4. Start auto-refresh: fetch a new QR every 15s so it never expires
+            qrRefreshTimer.current = setInterval(async () => {
+                try {
+                    const newQR = await fetchNewQR();
+                    if (isMounted.current) setQrCode(newQR);
+                } catch (err) {
+                    console.warn("QR auto-refresh failed:", err);
+                }
+            }, QR_REFRESH_INTERVAL);
+
+            // 5. Start polling connection state to detect successful scan
+            startStatusPolling();
+
         } catch (error) {
             console.error("QR Fetch Error:", error);
             setStatus("error");
@@ -108,8 +210,12 @@ export function EvoQRConnector() {
     };
 
     useEffect(() => {
-        // Optionally check status on mount
+        isMounted.current = true;
         fetchQR();
+        return () => {
+            isMounted.current = false;
+            stopPolling();
+        };
     }, []);
 
     return (
@@ -220,9 +326,12 @@ export function EvoQRConnector() {
                                 <span className="text-xs font-medium text-slate-500 animate-pulse">Scanning network...</span>
                             </div>
                         ) : qrCode ? (
-                            // Evolution API sometimes returns base64 string, so we render as image if it starts with data:image
+                            // If it's a base64 image, render as <img>. Otherwise render as QR code from data string.
                             qrCode.startsWith("data:image") ? (
                                 <img src={qrCode} alt="WhatsApp QR Code" className="w-full h-full object-contain mix-blend-multiply" />
+                            ) : qrCode.length > 500 ? (
+                                // Long base64 string without prefix — treat as base64 PNG
+                                <img src={`data:image/png;base64,${qrCode}`} alt="WhatsApp QR Code" className="w-full h-full object-contain mix-blend-multiply" />
                             ) : (
                                 <QRCodeSVG value={qrCode} size={150} level="M" />
                             )
