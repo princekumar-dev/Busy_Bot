@@ -42,14 +42,16 @@ export function EvoQRConnector() {
                 method: "POST",
                 headers: getHeaders(),
                 body: JSON.stringify({
-                    enabled: true,
-                    url: WEBHOOK_URL,
-                    webhookByEvents: false,
-                    webhookBase64: false,
-                    events: [
-                        "MESSAGES_UPSERT",
-                        "CONNECTION_UPDATE",
-                    ],
+                    webhook: {
+                        enabled: true,
+                        url: WEBHOOK_URL,
+                        webhookByEvents: false,
+                        webhookBase64: false,
+                        events: [
+                            "MESSAGES_UPSERT",
+                            "CONNECTION_UPDATE",
+                        ],
+                    },
                 }),
             });
             if (res.ok) {
