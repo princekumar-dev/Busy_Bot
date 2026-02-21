@@ -96,8 +96,11 @@ export type Database = {
           emoji_usage: boolean
           formality_score: number | null
           id: string
+          last_trained_at: string | null
+          learned_style: Record<string, any> | null
           response_delay_ms: number | null
           tone: string
+          training_message_count: number | null
           updated_at: string
           user_id: string
         }
@@ -108,8 +111,11 @@ export type Database = {
           emoji_usage?: boolean
           formality_score?: number | null
           id?: string
+          last_trained_at?: string | null
+          learned_style?: Record<string, any> | null
           response_delay_ms?: number | null
           tone?: string
+          training_message_count?: number | null
           updated_at?: string
           user_id: string
         }
@@ -120,8 +126,11 @@ export type Database = {
           emoji_usage?: boolean
           formality_score?: number | null
           id?: string
+          last_trained_at?: string | null
+          learned_style?: Record<string, any> | null
           response_delay_ms?: number | null
           tone?: string
+          training_message_count?: number | null
           updated_at?: string
           user_id?: string
         }
@@ -160,6 +169,7 @@ export type Database = {
           busy_mode: boolean
           created_at: string
           emergency_notify: boolean
+          gemini_api_key: string | null
           id: string
           updated_at: string
           user_id: string
@@ -170,6 +180,7 @@ export type Database = {
           busy_mode?: boolean
           created_at?: string
           emergency_notify?: boolean
+          gemini_api_key?: string | null
           id?: string
           updated_at?: string
           user_id: string
@@ -180,6 +191,7 @@ export type Database = {
           busy_mode?: boolean
           created_at?: string
           emergency_notify?: boolean
+          gemini_api_key?: string | null
           id?: string
           updated_at?: string
           user_id?: string

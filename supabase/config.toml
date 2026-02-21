@@ -1,4 +1,7 @@
-project_id = "egbvwhivztcxjihphgod"
+project_id = "rgdlnvxgivzqyscckycg"
 
 [functions.webhook]
+verify_jwt = false
+
+[functions.train-personality]
 verify_jwt = false
