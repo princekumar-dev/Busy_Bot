@@ -40,7 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email,
       password,
       options: {
-        emailRedirectTo: window.location.origin,
+        emailRedirectTo: import.meta.env.VITE_SITE_URL || window.location.origin,
         data: { display_name: displayName },
       },
     });
