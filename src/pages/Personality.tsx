@@ -218,16 +218,64 @@ export default function Personality() {
                     </div>
                   </div>
                 )}
+                {learnedStyle.fillers?.length > 0 && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground font-medium min-w-[120px]">Fillers:</span>
+                    <div className="flex flex-wrap gap-1">
+                      {learnedStyle.fillers.map((f: string, i: number) => (
+                        <span key={i} className="rounded-full bg-yellow-500/10 px-2 py-0.5 text-yellow-500">{f}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {learnedStyle.closings?.length > 0 && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground font-medium min-w-[120px]">Closings:</span>
+                    <div className="flex flex-wrap gap-1">
+                      {learnedStyle.closings.map((c: string, i: number) => (
+                        <span key={i} className="rounded-full bg-orange-500/10 px-2 py-0.5 text-orange-500">{c}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {learnedStyle.tone_summary && (
                   <div className="flex gap-2">
                     <span className="text-muted-foreground font-medium min-w-[120px]">Your vibe:</span>
                     <span className="text-foreground italic">{learnedStyle.tone_summary}</span>
                   </div>
                 )}
+                {learnedStyle.detected_languages?.length > 0 && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground font-medium min-w-[120px]">Languages:</span>
+                    <div className="flex flex-wrap gap-1">
+                      {learnedStyle.detected_languages.map((l: string, i: number) => (
+                        <span key={i} className="rounded-full bg-blue-500/10 px-2 py-0.5 text-blue-400 capitalize">{l}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {learnedStyle.primary_language && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground font-medium min-w-[120px]">Primary lang:</span>
+                    <span className="text-foreground capitalize font-medium">{learnedStyle.primary_language}</span>
+                  </div>
+                )}
                 {learnedStyle.language_mix && (
                   <div className="flex gap-2">
-                    <span className="text-muted-foreground font-medium min-w-[120px]">Language:</span>
+                    <span className="text-muted-foreground font-medium min-w-[120px]">Lang style:</span>
                     <span className="text-foreground">{learnedStyle.language_mix}</span>
+                  </div>
+                )}
+                {learnedStyle.abbreviation_style && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground font-medium min-w-[120px]">Abbreviations:</span>
+                    <span className="text-foreground italic">{learnedStyle.abbreviation_style}</span>
+                  </div>
+                )}
+                {learnedStyle.code_switching_pattern && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground font-medium min-w-[120px]">Code switching:</span>
+                    <span className="text-foreground italic">{learnedStyle.code_switching_pattern}</span>
                   </div>
                 )}
               </div>

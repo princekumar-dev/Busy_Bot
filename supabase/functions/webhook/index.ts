@@ -188,6 +188,12 @@ async function generateSmartReply(
     learnedContext += `\n- Overall tone: ${learnedStyle.tone_summary}`;
   if (learnedStyle.abbreviation_style)
     learnedContext += `\n- Abbreviation style: ${learnedStyle.abbreviation_style}`;
+  if (learnedStyle.detected_languages?.length)
+    learnedContext += `\n- Languages you speak: ${learnedStyle.detected_languages.join(", ")}`;
+  if (learnedStyle.primary_language)
+    learnedContext += `\n- Your primary language: ${learnedStyle.primary_language}`;
+  if (learnedStyle.code_switching_pattern)
+    learnedContext += `\n- Code-switching habit: ${learnedStyle.code_switching_pattern}`;
 
   // Per-contact learned patterns (fuzzy key matching)
   const contactKey = contactName?.toLowerCase().replace(/\s+/g, "_") || "unknown";

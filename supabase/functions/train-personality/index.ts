@@ -27,7 +27,7 @@ async function callGeminiJSON(prompt: string, geminiKey: string): Promise<any> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.3, maxOutputTokens: 1200 },
+        generationConfig: { temperature: 0.3, maxOutputTokens: 2048 },
       }),
     }
   );
@@ -103,25 +103,38 @@ serve(async (req) => {
 
     const globalPrompt = `Analyze these WhatsApp messages sent by ONE person. Extract their UNIQUE communication style and personality patterns.
 
+IMPORTANT: This person may use MULTIPLE LANGUAGES including:
+- English
+- Hindi (Devanagari or Roman script: kya, kaise, haan, nahi, acha, bhai)
+- Tamil (Tamil script or Roman: da, di, machi, sollu, enna, epdi, seri)
+- Hinglish (Hindi-English mix: "acha sounds good", "kal milte hai bro")
+- Tanglish (Tamil-English mix: "seri da", "romba good", "enna pannura")
+- Any other language or code-switching
+
+Capture ALL language patterns — DO NOT ignore non-English words.
+
 MESSAGES (most recent first):
 ${allMessagesText}
 
 Analyze carefully and return ONLY a valid JSON object (no markdown, no code blocks, no explanation) with these fields:
 {
-  "greetings": ["list of greetings they actually use, e.g. hey, oyee, yo, hi bro"],
-  "affirmatives": ["how they say yes/okay, e.g. hmm, mm, yeah, acha, haan, ok"],
-  "negatives": ["how they say no, e.g. nah, nahi, nope, na"],
-  "fillers": ["filler words/sounds they use, e.g. like, basically, actually, arrey"],
-  "closings": ["how they end conversations, e.g. bye, chal, ok bye, ttyl"],
+  "greetings": ["ALL greetings in ANY language they use, e.g. hey, oyee, yo, vanakkam, namaste, dei, kya re"],
+  "affirmatives": ["ALL ways they say yes in ANY language, e.g. hmm, haan, acha, seri, ok da, theek hai, aamam"],
+  "negatives": ["ALL ways they say no in ANY language, e.g. nah, nahi, venda, illa, na bro"],
+  "fillers": ["ALL filler words in ANY language, e.g. like, arrey, da, yaar, basically, aana, matlab"],
+  "closings": ["ALL conversation endings in ANY language, e.g. bye, chal, seri da, ok bye, poi varen, ttyl"],
   "emoji_favorites": ["their most used emojis"],
   "avg_word_count": 8,
-  "language_mix": "description of language patterns e.g. 'English with Hindi slang'",
+  "detected_languages": ["list of languages detected, e.g. english, hindi, tamil, hinglish, tanglish"],
+  "primary_language": "the language they use MOST, e.g. tanglish, hinglish, english",
+  "language_mix": "description of language patterns e.g. 'Tanglish with English slang' or 'Mostly Hinglish'",
   "tone_summary": "brief description of their communication tone and energy",
-  "signature_phrases": ["unique phrases they frequently use"],
-  "abbreviation_style": "how they shorten words, e.g. 'u' for 'you', 'msg' for 'message'"
+  "signature_phrases": ["unique phrases they frequently use, in ANY language"],
+  "abbreviation_style": "how they shorten words, e.g. 'u' for 'you', 'msg' for 'message'",
+  "code_switching_pattern": "how they switch between languages mid-sentence or per-message"
 }
 
-IMPORTANT: Base this ONLY on the actual messages above. Don't invent patterns that aren't there. If a field has no matches, use an empty array [].`;
+IMPORTANT: Base this ONLY on the actual messages above. Don't invent patterns that aren't there. If a field has no matches, use an empty array []. Include words from ALL languages they use — not just English.`;
 
     let learnedStyle;
     try {
@@ -191,6 +204,8 @@ IMPORTANT: Base this ONLY on the actual messages above. Don't invent patterns th
 
       const contactPrompt = `Analyze how this person talks to "${contact.name}" specifically on WhatsApp.
 
+NOTE: Messages may be in English, Hindi, Tamil, Hinglish (Hindi+English), Tanglish (Tamil+English), or any mix. Capture the ACTUAL language used.
+
 THEIR MESSAGES TO ${contact.name}:
 ${messages.slice(0, 50).join("\n")}
 
@@ -199,11 +214,11 @@ ${pairs.length > 0 ? `CONVERSATION PAIRS (what ${contact.name} said → how this
 Return ONLY a valid JSON (no markdown, no code blocks):
 {
   "tone": "how they talk to this specific person (e.g. very casual, formal, affectionate, professional, playful)",
-  "language": "language they use with this person (e.g. pure English, Hinglish, Hindi, mix)",
+  "language": "EXACT language with this person (e.g. Tanglish, Hinglish, pure Tamil, pure Hindi, English, mixed). Be specific.",
   "emoji_usage": "how they use emojis with this person (heavy, moderate, rarely, never)",
-  "sample_replies": ["3-5 short examples of how they'd typically reply to this person"],
+  "sample_replies": ["3-5 short examples of how they'd typically reply to this person — keep in their ORIGINAL language, don't translate"],
   "relationship_hint": "inferred relationship (friend, close friend, family, colleague, boss, romantic, acquaintance)",
-  "unique_patterns": "any special way they talk to THIS person that differs from their general style"
+  "unique_patterns": "any special way they talk to THIS person that differs from their general style, including language switches"
 }`;
 
       try {
