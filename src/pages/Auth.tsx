@@ -53,7 +53,7 @@ export default function Auth() {
             Busy<span className="text-primary glow-text">Bot</span>
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            AI-powered WhatsApp voice assistant
+            AI-powered WhatsApp auto-reply assistant
           </p>
         </div>
 

@@ -15,6 +15,7 @@ export default function Personality() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [training, setTraining] = useState(false);
+  const [trainingStep, setTrainingStep] = useState("");
   const [tone, setTone] = useState("casual");
   const [avgLength, setAvgLength] = useState(15);
   const [emojiUsage, setEmojiUsage] = useState(true);
@@ -71,8 +72,15 @@ export default function Personality() {
   const handleTrain = async () => {
     if (!user) return;
     setTraining(true);
+    setTrainingStep("Analyzing your messages...");
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+
+      // Brief delay so the user sees the step
+      setTimeout(() => setTrainingStep("Learning your global style..."), 2000);
+      setTimeout(() => setTrainingStep("Analyzing per-contact patterns..."), 5000);
+      setTimeout(() => setTrainingStep("Building personality model..."), 8000);
+
       const res = await fetch(`${supabaseUrl}/functions/v1/train-personality`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -89,15 +97,17 @@ export default function Personality() {
         setLearnedStyle(data.learned_style);
         setTrainingMsgCount(data.messages_analyzed);
         setLastTrained(new Date().toISOString());
+        const contactCount = data.contacts_analyzed || 0;
         toast({
           title: "🧠 Training Complete!",
-          description: `Analyzed ${data.messages_analyzed} messages. Your AI now knows your style!`,
+          description: `Analyzed ${data.messages_analyzed} messages across ${contactCount} contacts. Your AI now knows your style!`,
         });
       }
     } catch (err) {
       toast({ title: "Error", description: "Failed to train AI", variant: "destructive" });
     }
     setTraining(false);
+    setTrainingStep("");
   };
 
   if (loading) return <div className="h-96 animate-pulse rounded-xl bg-secondary" />;
@@ -137,7 +147,7 @@ export default function Personality() {
               {training ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Training AI...
+                  {trainingStep || "Training AI..."}
                 </>
               ) : (
                 <>

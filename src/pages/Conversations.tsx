@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Search, MessageSquare, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
@@ -46,6 +46,8 @@ export default function Conversations() {
   const [loadingConvos, setLoadingConvos] = useState(true);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [lastMessages, setLastMessages] = useState<Record<string, string>>({});
+  const [showChat, setShowChat] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Fetch conversations from Supabase
   useEffect(() => {
@@ -154,6 +156,11 @@ export default function Conversations() {
     };
   }, [selectedId, user]);
 
+  // Auto-scroll to bottom on new messages
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
   const filtered = conversations.filter(
     (c) =>
       (c.contact_name || "").toLowerCase().includes(search.toLowerCase()) ||
@@ -162,6 +169,11 @@ export default function Conversations() {
 
   const selectedConvo = conversations.find((c) => c.id === selectedId);
 
+  const handleSelectConvo = (id: string) => {
+    setSelectedId(id);
+    setShowChat(true);
+  };
+
   return (
     <div className="animate-slide-up">
       <h1 className="font-display text-2xl font-bold text-foreground mb-6">
@@ -169,8 +181,8 @@ export default function Conversations() {
       </h1>
 
       <div className="glass rounded-xl overflow-hidden flex" style={{ height: "calc(100vh - 200px)" }}>
-        {/* List */}
-        <div className="w-80 shrink-0 border-r border-border overflow-auto">
+        {/* List — hidden on mobile when chat is open */}
+        <div className={`w-full md:w-80 shrink-0 border-r border-border overflow-auto ${showChat ? "hidden md:block" : "block"}`}>
           <div className="p-3">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -204,7 +216,7 @@ export default function Conversations() {
               {filtered.map((c) => (
                 <button
                   key={c.id}
-                  onClick={() => setSelectedId(c.id)}
+                  onClick={() => handleSelectConvo(c.id)}
                   className={`w-full p-4 text-left transition-colors hover:bg-secondary/50 ${
                     selectedId === c.id ? "bg-primary/5 border-l-2 border-l-primary" : ""
                   }`}
@@ -238,11 +250,17 @@ export default function Conversations() {
           )}
         </div>
 
-        {/* Chat */}
-        <div className="flex flex-1 flex-col">
+        {/* Chat — full width on mobile */}
+        <div className={`flex flex-1 flex-col ${showChat ? "block" : "hidden md:flex"}`}>
           {selectedConvo ? (
             <>
               <div className="flex items-center gap-3 border-b border-border p-4">
+                <button
+                  onClick={() => setShowChat(false)}
+                  className="md:hidden rounded-lg p-1.5 text-muted-foreground hover:bg-secondary"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                </button>
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 font-display text-xs font-bold text-primary">
                   {(selectedConvo.contact_name || selectedConvo.contact_number)[0].toUpperCase()}
                 </div>
@@ -279,6 +297,9 @@ export default function Conversations() {
                           {msg.is_auto_reply && (
                             <span className="text-[9px] text-primary/70 font-medium">• auto-reply</span>
                           )}
+                          {msg.sender === "user" && !msg.is_auto_reply && (
+                            <span className="text-[9px] text-green-400/70 font-medium">• you</span>
+                          )}
                           {msg.urgency === "emergency" && (
                             <span className="text-[9px] text-red-400 font-medium">• 🚨 emergency</span>
                           )}
@@ -287,6 +308,7 @@ export default function Conversations() {
                     </div>
                   ))
                 )}
+                <div ref={chatEndRef} />
               </div>
             </>
           ) : (

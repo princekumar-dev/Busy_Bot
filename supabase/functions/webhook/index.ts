@@ -28,6 +28,7 @@ function classifyIntent(text: string): {
   intent: string;
   sentiment: string;
   needsReply: boolean;
+  detectedLanguage: string;
 } {
   const t = text.toLowerCase().trim();
 
@@ -76,7 +77,26 @@ function classifyIntent(text: string): {
   const noReplyPatterns = /^(ok|k|kk|okay|👍|👌|🙏|thanks|thanku|ty|tq|hmm|mm|hm|oh|ohk|accha|acha|theek|thik|seri|serida|okda|okdi|hmda|aamam|haan|ha|ji|ok\s?va|seri\s?pa|ok\s?pa|ok\s?da|ok\s?machi|nandri|dhanyavaad|thenkyu|thanksu)\s*\.?$/i;
   const needsReply = !(noReplyPatterns.test(t) || intent === "farewell");
 
-  return { intent, sentiment, needsReply };
+  // ─── Language detection ───
+  let detectedLanguage = "english";
+  const tamilChars = /[\u0B80-\u0BFF]/;
+  const hindiChars = /[\u0900-\u097F]/;
+  const tamilRomanWords = /\b(da|di|dei|machi|machan|nanba|enna|enga|eppo|epdi|sollu|pannunga|vaanga|semma|thala|paaru|kudu|seri|romba|podu|aana|illa|iruku|theriyum|konjam|panna|vandhu|pogalam|vaada|vanakkam|nandri)\b/i;
+  const hindiRomanWords = /\b(kya|kab|kaise|kahan|kaun|kitna|bhai|yaar|acha|theek|haan|nahi|batao|bhejo|karo|dekho|sunno|arey|chalo|abhi|jaldi|matlab|wala|mein|hai|toh|bhi|lekin|bohot|bahut|tera|mera|apna|humara)\b/i;
+
+  if (tamilChars.test(t)) detectedLanguage = "tamil";
+  else if (hindiChars.test(t)) detectedLanguage = "hindi";
+  else {
+    const tamilHits = (t.match(tamilRomanWords) || []).length;
+    const hindiHits = (t.match(hindiRomanWords) || []).length;
+    if (tamilHits > 0 && hindiHits > 0) detectedLanguage = "mixed";
+    else if (tamilHits >= 2) detectedLanguage = "tanglish";
+    else if (tamilHits === 1) detectedLanguage = "tanglish_light";
+    else if (hindiHits >= 2) detectedLanguage = "hinglish";
+    else if (hindiHits === 1) detectedLanguage = "hinglish_light";
+  }
+
+  return { intent, sentiment, needsReply, detectedLanguage };
 }
 
 /* ──────────────────────────────────────────────────────────
@@ -126,7 +146,7 @@ async function generateSmartReply(
   conversationHistory: any[],
   geminiKey: string,
   fallbackText: string,
-  intentData: { intent: string; sentiment: string },
+  intentData: { intent: string; sentiment: string; detectedLanguage: string },
   relationship: string
 ): Promise<string> {
   // Build readable conversation history (last 20 for context window)
@@ -169,9 +189,20 @@ async function generateSmartReply(
   if (learnedStyle.abbreviation_style)
     learnedContext += `\n- Abbreviation style: ${learnedStyle.abbreviation_style}`;
 
-  // Per-contact learned patterns (if available)
+  // Per-contact learned patterns (fuzzy key matching)
   const contactKey = contactName?.toLowerCase().replace(/\s+/g, "_") || "unknown";
-  const perContact = learnedStyle.per_contact?.[contactKey];
+  let perContact = learnedStyle.per_contact?.[contactKey];
+  // Fuzzy match — try partial name match if exact key doesn't work
+  if (!perContact && contactName && learnedStyle.per_contact) {
+    const nameLower = contactName.toLowerCase();
+    for (const [key, val] of Object.entries(learnedStyle.per_contact)) {
+      if (key.includes(nameLower) || nameLower.includes(key) ||
+          (val as any).contact_name?.toLowerCase().includes(nameLower)) {
+        perContact = val;
+        break;
+      }
+    }
+  }
   let perContactContext = "";
   if (perContact) {
     perContactContext = `\n\nHOW YOU SPECIFICALLY TALK TO ${contactName || "this person"}:`;
@@ -226,6 +257,13 @@ ${commonPhrases ? `- Common phrases: ${commonPhrases}` : ""}${learnedContext}${p
 
 RELATIONSHIP: ${relationshipGuide}
 
+DETECTED LANGUAGE: ${intentData.detectedLanguage}
+- If "tanglish" or "tamil": Reply in Tamil-English mix (Tanglish) using Roman script.
+- If "hinglish" or "hindi": Reply in Hindi-English mix (Hinglish) using Roman script.
+- If "english": Reply in English matching your natural style.
+- If "mixed": Match whatever mix they used.
+- ALWAYS match the language of the incoming message, not your default.
+
 NLP ANALYSIS OF THEIR MESSAGE:
 - Detected Intent: ${intentData.intent} → ${intentAdvice}
 - Detected Sentiment: ${intentData.sentiment} → ${sentimentAdvice}
@@ -251,11 +289,14 @@ THEIR NEW MESSAGE: "${incomingMessage}"
 Reply as this person would — natural, short, human, context-aware:`;
 
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
@@ -273,6 +314,8 @@ Reply as this person would — natural, short, human, context-aware:`;
         }),
       }
     );
+
+    clearTimeout(timeout);
 
     if (!res.ok) {
       const errBody = await res.text();
@@ -388,9 +431,14 @@ serve(async (req) => {
     else if (messageContent?.audioMessage) messageType = "voice";
     else if (messageContent?.videoMessage) messageType = "image";
 
+    // Skip auto-reply for media without text
+    const isMediaOnly = text === "[media message]";
+
     // ─── NLP: Classify intent & sentiment ───
-    const intentData = classifyIntent(text);
-    console.log(`NLP classification: intent=${intentData.intent}, sentiment=${intentData.sentiment}, needsReply=${intentData.needsReply}`);
+    const intentData = isMediaOnly
+      ? { intent: "media", sentiment: "neutral", needsReply: false, detectedLanguage: "unknown" }
+      : classifyIntent(text);
+    console.log(`NLP classification: intent=${intentData.intent}, sentiment=${intentData.sentiment}, needsReply=${intentData.needsReply}, lang=${intentData.detectedLanguage}`);
 
     // Urgency detection (incoming only)
     const lowerText = text.toLowerCase();
@@ -480,6 +528,46 @@ serve(async (req) => {
           .eq("id", conversation.id);
 
         results.push({ user_id: userId, action: "learned", snippet: text.substring(0, 50) });
+
+        // Auto-retrain check: if 50+ new messages since last training, trigger background retrain
+        try {
+          const { data: profile } = await supabase
+            .from("personality_profiles")
+            .select("training_message_count, last_trained_at")
+            .eq("user_id", userId)
+            .single();
+
+          const { count: totalUserMsgs } = await supabase
+            .from("messages")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", userId)
+            .eq("sender", "user");
+
+          const lastTrainedCount = (profile as any)?.training_message_count || 0;
+          const newMsgsSinceTraining = (totalUserMsgs || 0) - lastTrainedCount;
+
+          if (newMsgsSinceTraining >= 50) {
+            // Get Gemini key
+            const { data: userSettings } = await supabase
+              .from("settings")
+              .select("gemini_api_key")
+              .eq("user_id", userId)
+              .single();
+
+            if (userSettings?.gemini_api_key) {
+              console.log(`Auto-retrain triggered for ${userId}: ${newMsgsSinceTraining} new msgs`);
+              // Fire and forget — don't await
+              fetch(`${SUPABASE_URL}/functions/v1/train-personality`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ user_id: userId }),
+              }).catch((e) => console.error("Auto-retrain fire-and-forget error:", e));
+            }
+          }
+        } catch (e) {
+          console.error("Auto-retrain check error:", e);
+        }
+
         continue;
       }
 
