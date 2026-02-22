@@ -423,7 +423,8 @@ serve(async (req) => {
       messageContent?.videoMessage?.caption ||
       "[media message]";
 
-    const contactName = data.pushName || null;
+    // pushName is the SENDER's name. When fromMe=true, that's our own name — not the contact's.
+    const contactName = isFromMe ? null : (data.pushName || null);
 
     // Message type detection
     let messageType = "text";
