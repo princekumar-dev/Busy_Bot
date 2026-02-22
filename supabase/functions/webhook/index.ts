@@ -19,7 +19,104 @@ const corsHeaders = {
 };
 
 /* ──────────────────────────────────────────────────────────
-   Gemini-powered smart reply generator
+   1. INTENT & SENTIMENT CLASSIFIER
+   Classifies the incoming message BEFORE generating a reply
+   so the AI knows exactly what kind of response is needed.
+   ────────────────────────────────────────────────────────── */
+
+function classifyIntent(text: string): {
+  intent: string;
+  sentiment: string;
+  needsReply: boolean;
+} {
+  const t = text.toLowerCase().trim();
+
+  // ─── Intent detection ───
+  let intent = "statement";
+
+  // Greeting patterns (multi-language)
+  const greetingPatterns = /^(hi|hey|hello|yo|sup|hii+|heyy+|oyee?|oi|assalam|salam|namaste|hola|howdy|wassup|whats\s?up|good\s?(morning|afternoon|evening|night)|gm|gn)\b/i;
+  if (greetingPatterns.test(t) && t.split(/\s+/).length <= 6) intent = "greeting";
+
+  // Question patterns
+  const questionPatterns = /(\?|^(what|when|where|why|how|who|which|can|could|would|will|do|does|did|is|are|have|has|kya|kab|kahan|kaun|kaise|kidhar|kitna))\b/i;
+  if (questionPatterns.test(t)) intent = "question";
+
+  // Request / ask for action
+  const requestPatterns = /\b(please|plz|pls|send|share|give|tell|help|need|want|call|come|meet|check|look|see|reply|respond|answer|batao|bhejo|bata|kar|karo|dedo|batado)\b/i;
+  if (requestPatterns.test(t) && intent !== "greeting") intent = "request";
+
+  // Follow-up / checking in
+  const followUpPatterns = /^(hey\??|you there|hello\??|still busy|any update|update\??|so\??|bro\??|dude\??|bhai\??|are you there|r u there|reply|seen\??|online\??)\s*\??$/i;
+  if (followUpPatterns.test(t)) intent = "follow_up";
+
+  // Emotional / personal
+  const emotionalPatterns = /\b(miss you|love|sorry|sad|upset|crying|worried|scared|angry|frustrated|happy|excited|proud|thank|congrat|rip|passed away|died|hospital|sick|ill|hurt|pain|broke|breakup|fight)\b/i;
+  if (emotionalPatterns.test(t)) intent = "emotional";
+
+  // Farewell
+  const farewellPatterns = /^(bye|ok\s?bye|see you|cya|ttyl|good\s?night|take care|chal|chalo|tc|later|tata)\b/i;
+  if (farewellPatterns.test(t)) intent = "farewell";
+
+  // ─── Sentiment detection ───
+  let sentiment = "neutral";
+
+  const happyWords = /\b(happy|excited|great|awesome|amazing|wonderful|love|haha|lol|😂|😄|🎉|❤️|😍|yay|woohoo|fantastic|perfect)\b/i;
+  const sadWords = /\b(sad|upset|crying|cry|depressed|lonely|miss|hurt|pain|😢|😭|💔|sorry|worried|scared|anxiety|stressed)\b/i;
+  const angryWords = /\b(angry|mad|furious|pissed|annoyed|frustrated|wtf|🤬|😡|hate)\b/i;
+  const urgentWords = /\b(urgent|emergency|asap|immediately|right now|hurry|quick|fast|sos|911|🚨|⚠️|critical)\b/i;
+
+  if (urgentWords.test(t)) sentiment = "urgent";
+  else if (angryWords.test(t)) sentiment = "angry";
+  else if (sadWords.test(t)) sentiment = "sad";
+  else if (happyWords.test(t)) sentiment = "happy";
+
+  // ─── Does this need a reply? ───
+  // Don't reply to "ok", "k", "👍", reactions, or farewells
+  const noReplyPatterns = /^(ok|k|kk|okay|👍|👌|🙏|thanks|thanku|ty|tq|hmm|mm|hm|oh|ohk|accha|acha)\s*\.?$/i;
+  const needsReply = !(noReplyPatterns.test(t) || intent === "farewell");
+
+  return { intent, sentiment, needsReply };
+}
+
+/* ──────────────────────────────────────────────────────────
+   2. RELATIONSHIP INFERRER
+   Guesses the relationship based on conversation patterns
+   ────────────────────────────────────────────────────────── */
+
+function inferRelationship(
+  contactName: string | null,
+  history: any[]
+): string {
+  const name = (contactName || "").toLowerCase();
+
+  // Name-based hints
+  if (/\b(mom|mum|mama|amma|dad|papa|baba|sis|bro|brother|sister|bhai|didi|bhaiya)\b/i.test(name))
+    return "family";
+  if (/\b(sir|ma'am|prof|boss|manager|dr|doctor)\b/i.test(name))
+    return "professional";
+
+  // Analyze message formality from history
+  if (history.length < 3) return "unknown";
+
+  const userMsgs = history.filter((m) => m.sender === "user").map((m) => m.content.toLowerCase());
+  const allText = userMsgs.join(" ");
+
+  // Check for formal language → professional
+  const formalMarkers = (allText.match(/\b(sir|ma'am|please|kindly|regards|thank you|noted|will do)\b/gi) || []).length;
+  // Check for casual language → friend
+  const casualMarkers = (allText.match(/\b(bro|dude|yaar|bhai|lol|haha|bruh|omg|wtf|lmao|oye)\b/gi) || []).length;
+  // Check for affection → close friend or family
+  const affectionMarkers = (allText.match(/\b(love|miss|baby|jaan|darling|sweetheart|❤️|😘|🥰)\b/gi) || []).length;
+
+  if (affectionMarkers > 2) return "close_personal";
+  if (formalMarkers > casualMarkers + 2) return "professional";
+  if (casualMarkers > formalMarkers + 1) return "friend";
+  return "acquaintance";
+}
+
+/* ──────────────────────────────────────────────────────────
+   3. SMART REPLY GENERATOR (enhanced with NLP context)
    ────────────────────────────────────────────────────────── */
 
 async function generateSmartReply(
@@ -28,15 +125,18 @@ async function generateSmartReply(
   personality: any,
   conversationHistory: any[],
   geminiKey: string,
-  fallbackText: string
+  fallbackText: string,
+  intentData: { intent: string; sentiment: string },
+  relationship: string
 ): Promise<string> {
-  // Build readable conversation history
-  const historyLines = conversationHistory.map((m) => {
+  // Build readable conversation history (last 20 for context window)
+  const recentHistory = conversationHistory.slice(-20);
+  const historyLines = recentHistory.map((m) => {
     const who = m.sender === "user" ? "You" : contactName || "Contact";
     return `${who}: ${m.content}`;
   });
   const historyStr =
-    historyLines.join("\n") || "(First conversation — no history yet)";
+    historyLines.join("\n") || "(First message from this contact)";
 
   // Extract personality traits
   const tone = personality?.tone || "casual";
@@ -69,33 +169,86 @@ async function generateSmartReply(
   if (learnedStyle.abbreviation_style)
     learnedContext += `\n- Abbreviation style: ${learnedStyle.abbreviation_style}`;
 
-  const prompt = `You are acting as a REAL PERSON on WhatsApp. You MUST reply exactly as this person would — never reveal you're AI or a bot.
+  // Per-contact learned patterns (if available)
+  const contactKey = contactName?.toLowerCase().replace(/\s+/g, "_") || "unknown";
+  const perContact = learnedStyle.per_contact?.[contactKey];
+  let perContactContext = "";
+  if (perContact) {
+    perContactContext = `\n\nHOW YOU SPECIFICALLY TALK TO ${contactName || "this person"}:`;
+    if (perContact.tone) perContactContext += `\n- Your tone with them: ${perContact.tone}`;
+    if (perContact.sample_replies?.length)
+      perContactContext += `\n- Example replies to them: "${perContact.sample_replies.join('", "')}"`;
+    if (perContact.language) perContactContext += `\n- Language with them: ${perContact.language}`;
+    if (perContact.emoji_usage) perContactContext += `\n- Emoji usage with them: ${perContact.emoji_usage}`;
+  }
 
-YOUR PERSONALITY:
-- Tone: ${tone}
-- Formality: ${Math.round(formality * 100)}% (0%=super casual slang, 100%=very formal)
+  // Relationship context
+  const relationshipMap: Record<string, string> = {
+    family: "This is a FAMILY member — be warm, caring, and natural. You can be brief but never cold.",
+    close_personal: "This is someone very CLOSE to you — be warm, affectionate, and real.",
+    friend: "This is a FRIEND — be casual, fun, use slang freely, be yourself.",
+    professional: "This is a PROFESSIONAL contact — be slightly more polished but still natural. Don't use too much slang.",
+    acquaintance: "This is an ACQUAINTANCE — be polite but not overly formal. Keep it friendly.",
+    unknown: "Respond naturally based on their tone.",
+  };
+  const relationshipGuide = relationshipMap[relationship] || relationshipMap.unknown;
+
+  // Intent-specific guidance
+  const intentGuide: Record<string, string> = {
+    greeting: "They're greeting you. Greet them back using YOUR greeting style, then naturally mention you're busy/caught up.",
+    question: "They asked a question. Briefly acknowledge it (don't ignore the question entirely), and say you'll answer properly later.",
+    request: "They want something from you. Acknowledge what they need, and tell them you'll handle it / get back to them.",
+    follow_up: "They're checking if you're there / following up. Reassure them briefly — you're just busy, not ignoring them.",
+    emotional: "They're sharing something EMOTIONAL. Show you CARE — be warm, empathetic. Don't just brush it off with 'I'm busy'. Acknowledge their feelings FIRST, then mention you'll talk properly soon.",
+    statement: "They said something general. Respond naturally and briefly, weaving in that you're occupied.",
+    farewell: "They're saying bye. Say bye back in your style.",
+  };
+  const intentAdvice = intentGuide[intentData.intent] || intentGuide.statement;
+
+  // Sentiment-specific guidance
+  const sentimentGuide: Record<string, string> = {
+    happy: "They seem HAPPY/EXCITED — match their energy a bit, respond positively.",
+    sad: "They seem SAD/DOWN — be EXTRA warm and caring. Don't dismiss their feelings. Show empathy first.",
+    angry: "They seem UPSET/ANGRY — be calm, understanding. Don't be dismissive. Acknowledge their frustration.",
+    urgent: "This feels URGENT to them — take it seriously, don't be too casual about it.",
+    neutral: "Normal mood — respond naturally.",
+  };
+  const sentimentAdvice = sentimentGuide[intentData.sentiment] || sentimentGuide.neutral;
+
+  const prompt = `You are a REAL PERSON chatting on WhatsApp. You must reply EXACTLY as this person would — never reveal you're AI.
+
+YOUR PERSONALITY PROFILE:
+- Base Tone: ${tone}
+- Formality: ${Math.round(formality * 100)}% (0%=max casual, 100%=max formal)
 - Typical message length: ~${avgLength} words
-- Emojis: ${useEmoji ? "Use naturally like this person would, don't overdo" : "Rarely or never use emojis"}
-${commonPhrases ? `- Your common phrases: ${commonPhrases}` : ""}${learnedContext}
+- Emojis: ${useEmoji ? "Use naturally — match this person's emoji habits" : "Rarely/never use emojis"}
+${commonPhrases ? `- Common phrases: ${commonPhrases}` : ""}${learnedContext}${perContactContext}
+
+RELATIONSHIP: ${relationshipGuide}
+
+NLP ANALYSIS OF THEIR MESSAGE:
+- Detected Intent: ${intentData.intent} → ${intentAdvice}
+- Detected Sentiment: ${intentData.sentiment} → ${sentimentAdvice}
 
 CRITICAL RULES:
-1. You ARE this person. Match their exact style — same slang, abbreviations, tone, and vibe.
-2. You are currently BUSY or OCCUPIED. Naturally weave this in WITHOUT sounding like a template.
-3. ABSOLUTELY DO NOT say "I am busy I will get back to you soon" — that's robotic and obvious.
-4. If they greet you (hi/hello/hey), greet them back in YOUR style (use your learned greetings), then casually mention you're caught up.
-5. If they ask something specific, briefly acknowledge it and say you'll reply properly later.
-6. Match their language — if they write in Hindi/Hinglish/any language, reply in the same.
-7. Keep it SHORT — 1-2 sentences max, like a real quick WhatsApp message.
-8. Show EMOTION and personality — you're a real person with feelings, not a machine.
-9. Use sentiment awareness — if they seem sad/worried, be warm and caring; if casual, be chill.
-10. NEVER use formal phrases like "I acknowledge your message" or "I will respond at my earliest convenience".
+1. You ARE this person. Match their EXACT style — slang, abbreviations, language, vibe.
+2. You are currently BUSY/OCCUPIED. Weave this in naturally — DON'T sound like a template or bot.
+3. NEVER say "I am busy I will get back to you soon" — that's obviously robotic.
+4. NEVER use corporate phrases like "I acknowledge", "at my earliest convenience", "I've noted".
+5. Match their language — if they write Hindi/Hinglish/Tamil/any language, reply in the SAME language.
+6. Keep it SHORT — 1-3 sentences MAX, like a real quick WhatsApp message.
+7. Show REAL emotion — you're human with feelings, not a machine processing text.
+8. If they're sad/emotional, acknowledge feelings FIRST, THEN mention being busy.
+9. If they ask a specific question, briefly reference what they asked (don't ignore it).
+10. If they're following up, reassure them — you're busy, not ignoring them.
+11. Look at the conversation history to understand CONTEXT of what's being discussed.
 
-RECENT CONVERSATION HISTORY WITH ${contactName || "this contact"} (learn style from "You:" messages):
+CONVERSATION HISTORY WITH ${contactName || "this contact"}:
 ${historyStr}
 
 THEIR NEW MESSAGE: "${incomingMessage}"
 
-Reply as this person would (natural, short, human):`;
+Reply as this person would — natural, short, human, context-aware:`;
 
   try {
     const res = await fetch(
@@ -144,7 +297,30 @@ Reply as this person would (natural, short, human):`;
 }
 
 /* ──────────────────────────────────────────────────────────
-   Main webhook handler
+   4. DUPLICATE REPLY PREVENTION
+   Don't spam the same contact with busy replies
+   ────────────────────────────────────────────────────────── */
+
+async function hasRecentAutoReply(
+  conversationId: string,
+  userId: string,
+  cooldownMinutes: number = 3
+): Promise<boolean> {
+  const cutoff = new Date(Date.now() - cooldownMinutes * 60 * 1000).toISOString();
+  const { data } = await supabase
+    .from("messages")
+    .select("id")
+    .eq("conversation_id", conversationId)
+    .eq("user_id", userId)
+    .eq("is_auto_reply", true)
+    .gte("created_at", cutoff)
+    .limit(1);
+
+  return (data?.length || 0) > 0;
+}
+
+/* ──────────────────────────────────────────────────────────
+   5. MAIN WEBHOOK HANDLER
    ────────────────────────────────────────────────────────── */
 
 serve(async (req) => {
@@ -212,39 +388,35 @@ serve(async (req) => {
     else if (messageContent?.audioMessage) messageType = "voice";
     else if (messageContent?.videoMessage) messageType = "image";
 
+    // ─── NLP: Classify intent & sentiment ───
+    const intentData = classifyIntent(text);
+    console.log(`NLP classification: intent=${intentData.intent}, sentiment=${intentData.sentiment}, needsReply=${intentData.needsReply}`);
+
     // Urgency detection (incoming only)
     const lowerText = text.toLowerCase();
     let urgency = "normal";
     if (!isFromMe) {
-      const emergencyWords = [
-        "emergency", "urgent", "asap", "help", "911",
-        "sos", "critical", "🚨", "⚠️",
-      ];
-      const importantWords = [
-        "important", "priority", "need", "please call", "call me",
-      ];
-      if (emergencyWords.some((w) => lowerText.includes(w)))
+      if (intentData.sentiment === "urgent") {
         urgency = "emergency";
-      else if (importantWords.some((w) => lowerText.includes(w)))
-        urgency = "important";
+      } else {
+        const emergencyWords = ["emergency", "urgent", "asap", "help", "911", "sos", "critical", "🚨", "⚠️"];
+        const importantWords = ["important", "priority", "need", "please call", "call me"];
+        if (emergencyWords.some((w) => lowerText.includes(w))) urgency = "emergency";
+        else if (importantWords.some((w) => lowerText.includes(w))) urgency = "important";
+      }
     }
 
     // ─── Fetch all users with settings ───
     const { data: allSettings, error: settingsError } = await supabase
       .from("settings")
-      .select(
-        "user_id, busy_mode, auto_reply_text, emergency_notify, gemini_api_key"
-      )
+      .select("user_id, busy_mode, auto_reply_text, emergency_notify, gemini_api_key")
       .order("updated_at", { ascending: false });
 
     if (settingsError || !allSettings || allSettings.length === 0) {
       console.error("No user settings found:", settingsError);
       return new Response(
         JSON.stringify({ status: "error", message: "No users" }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -276,15 +448,11 @@ serve(async (req) => {
           .single();
 
         if (createError) {
-          console.error(
-            `Failed to create convo for ${userId}:`,
-            createError
-          );
+          console.error(`Failed to create convo for ${userId}:`, createError);
           continue;
         }
         conversation = newConvo;
       } else if (!isFromMe) {
-        // Update unread count & timestamp for incoming messages
         await supabase
           .from("conversations")
           .update({
@@ -295,11 +463,7 @@ serve(async (req) => {
           .eq("id", conversation.id);
       }
 
-      /* ═══════════════════════════════════════
-         fromMe = true → LEARNING MODE
-         Store the user's own messages so the AI
-         can learn their communication style.
-         ═══════════════════════════════════════ */
+      /* ═══ fromMe = true → LEARNING MODE ═══ */
       if (isFromMe) {
         await supabase.from("messages").insert({
           conversation_id: conversation.id,
@@ -310,24 +474,16 @@ serve(async (req) => {
           urgency: "normal",
           is_auto_reply: false,
         });
-
-        // Keep conversation timestamp up to date
         await supabase
           .from("conversations")
           .update({ last_message_at: new Date().toISOString() })
           .eq("id", conversation.id);
 
-        results.push({
-          user_id: userId,
-          action: "learned",
-          snippet: text.substring(0, 50),
-        });
-        continue; // Never auto-reply to our own messages
+        results.push({ user_id: userId, action: "learned", snippet: text.substring(0, 50) });
+        continue;
       }
 
-      /* ═══════════════════════════════════════
-         Incoming message → store it
-         ═══════════════════════════════════════ */
+      /* ═══ Incoming message → store it ═══ */
       await supabase.from("messages").insert({
         conversation_id: conversation.id,
         user_id: userId,
@@ -338,15 +494,16 @@ serve(async (req) => {
         is_auto_reply: false,
       });
 
-      /* ═══════════════════════════════════════
-         Auto-reply logic (only if busy_mode ON)
-         ═══════════════════════════════════════ */
+      /* ═══ Auto-reply logic (only if busy_mode ON) ═══ */
       if (!settings.busy_mode) {
-        results.push({
-          user_id: userId,
-          action: "stored",
-          busy_mode: false,
-        });
+        results.push({ user_id: userId, action: "stored", busy_mode: false });
+        continue;
+      }
+
+      // Skip if message doesn't need a reply (reactions, "ok", "thanks", farewells)
+      if (!intentData.needsReply) {
+        console.log(`Skipping reply — "${text}" doesn't need one (intent: ${intentData.intent})`);
+        results.push({ user_id: userId, action: "no_reply_needed", intent: intentData.intent });
         continue;
       }
 
@@ -357,6 +514,14 @@ serve(async (req) => {
         continue;
       }
 
+      // Duplicate reply prevention — don't spam the same person
+      const recentlyReplied = await hasRecentAutoReply(conversation.id, userId, 3);
+      if (recentlyReplied) {
+        console.log(`Cooldown active — already replied to ${contactNumber} recently`);
+        results.push({ user_id: userId, action: "cooldown_skip" });
+        continue;
+      }
+
       // Fetch personality profile (with learned style)
       const { data: personality } = await supabase
         .from("personality_profiles")
@@ -364,7 +529,7 @@ serve(async (req) => {
         .eq("user_id", userId)
         .single();
 
-      // Fetch recent conversation history for context
+      // Fetch recent conversation history for this SPECIFIC contact
       const { data: recentMessages } = await supabase
         .from("messages")
         .select("sender, content, created_at")
@@ -372,57 +537,53 @@ serve(async (req) => {
         .order("created_at", { ascending: false })
         .limit(30);
 
+      // Infer relationship from conversation patterns
+      const relationship = inferRelationship(contactName, recentMessages || []);
+      console.log(`Relationship with ${contactName}: ${relationship}`);
+
       // ─── Generate smart reply ───
-      const fallback =
-        settings.auto_reply_text ||
-        "Hey, caught up with something rn. Will text you back soon!";
+      const fallback = settings.auto_reply_text || "Hey, caught up with something rn. Will text you back soon!";
 
       let replyText: string;
 
       if (settings.gemini_api_key) {
-        // Use Gemini AI for human-like, personality-matched replies
         replyText = await generateSmartReply(
           text,
           contactName,
           personality,
-          (recentMessages || []).reverse(), // chronological order
+          (recentMessages || []).reverse(),
           settings.gemini_api_key,
-          fallback
+          fallback,
+          intentData,
+          relationship
         );
       } else {
-        // No Gemini key — use fallback text
-        if (urgency === "important") {
-          replyText = `${fallback} Noted that it seems important — will prioritize it.`;
+        // No Gemini — contextual fallback based on intent
+        if (intentData.intent === "greeting") {
+          replyText = `Hey! Kinda caught up rn, will text you back soon 👋`;
+        } else if (intentData.intent === "emotional" && intentData.sentiment === "sad") {
+          replyText = `Hey, I see your message. I'll call you back soon, just in something rn ❤️`;
+        } else if (intentData.intent === "question") {
+          replyText = `${fallback} Will answer that properly when I'm free.`;
+        } else if (urgency === "important") {
+          replyText = `${fallback} Noted this seems important — will prioritize it.`;
         } else {
           replyText = fallback;
         }
       }
 
       // ─── Send reply via Evolution API ───
-      const evoBase = EVO_API_URL.endsWith("/")
-        ? EVO_API_URL.slice(0, -1)
-        : EVO_API_URL;
+      const evoBase = EVO_API_URL.endsWith("/") ? EVO_API_URL.slice(0, -1) : EVO_API_URL;
       const delay = personality?.response_delay_ms || 2000;
 
       try {
-        const sendRes = await fetch(
-          `${evoBase}/message/sendText/${EVO_BOT_NAME}`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              apikey: EVO_API_KEY,
-            },
-            body: JSON.stringify({
-              number: contactNumber,
-              text: replyText,
-              delay,
-            }),
-          }
-        );
+        const sendRes = await fetch(`${evoBase}/message/sendText/${EVO_BOT_NAME}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", apikey: EVO_API_KEY },
+          body: JSON.stringify({ number: contactNumber, text: replyText, delay }),
+        });
 
         if (sendRes.ok) {
-          // Store the bot reply
           await supabase.from("messages").insert({
             conversation_id: conversation.id,
             user_id: userId,
@@ -432,23 +593,19 @@ serve(async (req) => {
             urgency: "normal",
             is_auto_reply: true,
           });
-
-          console.log(
-            `Smart reply sent to ${contactNumber}: "${replyText}"`
-          );
+          console.log(`Smart reply → ${contactNumber} [${intentData.intent}/${intentData.sentiment}/${relationship}]: "${replyText}"`);
           results.push({
             user_id: userId,
             action: "smart_reply",
+            intent: intentData.intent,
+            sentiment: intentData.sentiment,
+            relationship,
             reply: replyText.substring(0, 80),
           });
         } else {
           const errText = await sendRes.text();
           console.error("Send failed:", sendRes.status, errText);
-          results.push({
-            user_id: userId,
-            action: "send_failed",
-            error: errText.substring(0, 100),
-          });
+          results.push({ user_id: userId, action: "send_failed", error: errText.substring(0, 100) });
         }
       } catch (sendErr) {
         console.error("Send error:", sendErr);
@@ -457,22 +614,14 @@ serve(async (req) => {
     } // end for-loop
 
     return new Response(
-      JSON.stringify({
-        status: "ok",
-        urgency,
-        fromMe: isFromMe,
-        results,
-      }),
+      JSON.stringify({ status: "ok", urgency, fromMe: isFromMe, intent: intentData.intent, sentiment: intentData.sentiment, results }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
     console.error("Webhook error:", err);
     return new Response(
       JSON.stringify({ status: "error", message: String(err) }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });

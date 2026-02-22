@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
-import { Brain, Save, Sparkles, Zap, MessageCircle, Loader2, CheckCircle2 } from "lucide-react";
+import { Brain, Save, Sparkles, Zap, MessageCircle, Loader2, CheckCircle2, Users, User } from "lucide-react";
 
 export default function Personality() {
   const { user } = useAuth();
@@ -232,6 +232,73 @@ export default function Personality() {
               </p>
             </div>
           ) : null}
+
+          {/* Per-Contact Learned Styles */}
+          {learnedStyle?.per_contact && Object.keys(learnedStyle.per_contact).length > 0 && (
+            <div className="rounded-lg bg-secondary/50 p-4 border border-border space-y-3 mt-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Users className="h-4 w-4 text-primary" />
+                <span className="text-xs font-display font-semibold text-primary">
+                  Per-Contact Styles ({learnedStyle.contacts_analyzed || Object.keys(learnedStyle.per_contact).length} contacts)
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground -mt-1">
+                BusyBot knows you talk differently to different people
+              </p>
+              <div className="space-y-3">
+                {Object.entries(learnedStyle.per_contact).map(([key, val]: [string, any]) => (
+                  <div key={key} className="rounded-lg bg-background/50 p-3 border border-border/50">
+                    <div className="flex items-center gap-2 mb-2">
+                      <User className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="text-sm font-display font-semibold text-foreground">{val.contact_name || key}</span>
+                      {val.relationship_hint && (
+                        <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] text-blue-400">
+                          {val.relationship_hint}
+                        </span>
+                      )}
+                      <span className="ml-auto text-[10px] text-muted-foreground">{val.messages_analyzed} msgs</span>
+                    </div>
+                    <div className="grid gap-1.5 text-xs">
+                      {val.tone && (
+                        <div className="flex gap-2">
+                          <span className="text-muted-foreground min-w-[80px]">Tone:</span>
+                          <span className="text-foreground">{val.tone}</span>
+                        </div>
+                      )}
+                      {val.language && (
+                        <div className="flex gap-2">
+                          <span className="text-muted-foreground min-w-[80px]">Language:</span>
+                          <span className="text-foreground">{val.language}</span>
+                        </div>
+                      )}
+                      {val.emoji_usage && (
+                        <div className="flex gap-2">
+                          <span className="text-muted-foreground min-w-[80px]">Emojis:</span>
+                          <span className="text-foreground">{val.emoji_usage}</span>
+                        </div>
+                      )}
+                      {val.sample_replies?.length > 0 && (
+                        <div className="flex gap-2">
+                          <span className="text-muted-foreground min-w-[80px]">Example:</span>
+                          <div className="flex flex-wrap gap-1">
+                            {val.sample_replies.slice(0, 3).map((r: string, i: number) => (
+                              <span key={i} className="rounded bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground italic">"{r}"</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {val.unique_patterns && (
+                        <div className="flex gap-2">
+                          <span className="text-muted-foreground min-w-[80px]">Unique:</span>
+                          <span className="text-foreground italic">{val.unique_patterns}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ── Manual Personality Config ── */}
