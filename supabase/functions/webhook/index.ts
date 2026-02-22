@@ -34,37 +34,37 @@ function classifyIntent(text: string): {
   // ─── Intent detection ───
   let intent = "statement";
 
-  // Greeting patterns (multi-language)
-  const greetingPatterns = /^(hi|hey|hello|yo|sup|hii+|heyy+|oyee?|oi|assalam|salam|namaste|hola|howdy|wassup|whats\s?up|good\s?(morning|afternoon|evening|night)|gm|gn)\b/i;
+  // Greeting patterns (English + Hinglish + Tanglish + multi-language)
+  const greetingPatterns = /^(hi|hey|hello|yo|sup|hii+|heyy+|oyee?|oi|assalam|salam|namaste|hola|howdy|wassup|whats\s?up|good\s?(morning|afternoon|evening|night)|gm|gn|vanakkam|vannakam|da|di|dei|machi|machan|machii?|nanba|bha+i|kya\s?hal|kaise\s?ho|theek|kem\s?cho|aur\s?bata|bolo|bol\s?na|haan\s?bhai|arey?|yov|enna\s?da|eppadi|sollu|vaanga|vaa|pa|maapla|ji|helo+)\b/i;
   if (greetingPatterns.test(t) && t.split(/\s+/).length <= 6) intent = "greeting";
 
-  // Question patterns
-  const questionPatterns = /(\?|^(what|when|where|why|how|who|which|can|could|would|will|do|does|did|is|are|have|has|kya|kab|kahan|kaun|kaise|kidhar|kitna))\b/i;
+  // Question patterns (English + Hindi + Tamil)
+  const questionPatterns = /(\?|^(what|when|where|why|how|who|which|can|could|would|will|do|does|did|is|are|have|has|kya|kab|kahan|kaun|kaise|kidhar|kitna|kithe|enna|enga|yaar|yaaru|eppo|epdi|ethuku|evlo|ethana|yenda|yen|enge|sollu|panna|mudiyuma|theriyuma|unaku|neenga|romba))\b/i;
   if (questionPatterns.test(t)) intent = "question";
 
-  // Request / ask for action
-  const requestPatterns = /\b(please|plz|pls|send|share|give|tell|help|need|want|call|come|meet|check|look|see|reply|respond|answer|batao|bhejo|bata|kar|karo|dedo|batado)\b/i;
+  // Request / ask for action (English + Hindi + Tamil)
+  const requestPatterns = /\b(please|plz|pls|send|share|give|tell|help|need|want|call|come|meet|check|look|see|reply|respond|answer|batao|bhejo|bata|kar|karo|dedo|batado|sunno|suno|bhejna|dikhao|samjhao|sollu|solu|sollunga|anuppu|kudu|kudungga|paru|paaru|va|vaanga|pannunga|pannuda|konjam|thaa|kududa|call\s?pannu|msg\s?pannu|reply\s?pannu|check\s?pannu)\b/i;
   if (requestPatterns.test(t) && intent !== "greeting") intent = "request";
 
-  // Follow-up / checking in
-  const followUpPatterns = /^(hey\??|you there|hello\??|still busy|any update|update\??|so\??|bro\??|dude\??|bhai\??|are you there|r u there|reply|seen\??|online\??)\s*\??$/i;
+  // Follow-up / checking in (English + Hinglish + Tanglish)
+  const followUpPatterns = /^(hey\??|you there|hello\??|still busy|any update|update\??|so\??|bro\??|dude\??|bhai\??|are you there|r u there|reply|seen\??|online\??|da\??|dei\??|machi\??|machan\??|bol\s?na\??|sun\s?na\??|kaha\s?ho\??|kidhar\s?ho\??|reply\s?to\s?kar|msg\s?dekh|enna\s?aachu\??|enga\s?da\??|reply\s?pannu\s?da|pesi\s?mudicha\??|vandhudu\??|free\s?ah\??)\s*\??$/i;
   if (followUpPatterns.test(t)) intent = "follow_up";
 
-  // Emotional / personal
-  const emotionalPatterns = /\b(miss you|love|sorry|sad|upset|crying|worried|scared|angry|frustrated|happy|excited|proud|thank|congrat|rip|passed away|died|hospital|sick|ill|hurt|pain|broke|breakup|fight)\b/i;
+  // Emotional / personal (English + Hindi + Tamil)
+  const emotionalPatterns = /\b(miss you|love|sorry|sad|upset|crying|worried|scared|angry|frustrated|happy|excited|proud|thank|congrat|rip|passed away|died|hospital|sick|ill|hurt|pain|broke|breakup|fight|pyaar|dukhi|rona|tension|pareshan|fikar|gussa|khush|maafi|dhanyavaad|rodhane|sogam|kashtam|valikuthu|azhugiren|bayam|kovam|sandhosham|nandri|kanneer|vali|kavalai|manam|nesam|romba\s?bad|feel\s?pannuren|kedaikala|mosam|dhrogam)\b/i;
   if (emotionalPatterns.test(t)) intent = "emotional";
 
-  // Farewell
-  const farewellPatterns = /^(bye|ok\s?bye|see you|cya|ttyl|good\s?night|take care|chal|chalo|tc|later|tata)\b/i;
+  // Farewell (English + Hindi + Tamil)
+  const farewellPatterns = /^(bye|ok\s?bye|see you|cya|ttyl|good\s?night|take care|chal|chalo|tc|later|tata|alvida|phir\s?milte|baad\s?mein|chalta\s?hu|nikalta\s?hu|poi\s?varen|poitu\s?varen|sari\s?da|seri\s?da|seri\s?po|ta\s?ta|bye\s?da|bye\s?di|night\s?da|poidren|varuven|innum\s?pesalam)\b/i;
   if (farewellPatterns.test(t)) intent = "farewell";
 
   // ─── Sentiment detection ───
   let sentiment = "neutral";
 
-  const happyWords = /\b(happy|excited|great|awesome|amazing|wonderful|love|haha|lol|😂|😄|🎉|❤️|😍|yay|woohoo|fantastic|perfect)\b/i;
-  const sadWords = /\b(sad|upset|crying|cry|depressed|lonely|miss|hurt|pain|😢|😭|💔|sorry|worried|scared|anxiety|stressed)\b/i;
-  const angryWords = /\b(angry|mad|furious|pissed|annoyed|frustrated|wtf|🤬|😡|hate)\b/i;
-  const urgentWords = /\b(urgent|emergency|asap|immediately|right now|hurry|quick|fast|sos|911|🚨|⚠️|critical)\b/i;
+  const happyWords = /\b(happy|excited|great|awesome|amazing|wonderful|love|haha|lol|😂|😄|🎉|❤️|😍|yay|woohoo|fantastic|perfect|khush|maza|badhiya|zabardast|mast|superr?|semma|theri|mass|vera\s?level|romba\s?nalla|adipoli|kalakkal|sema|jolly|chanceless)\b/i;
+  const sadWords = /\b(sad|upset|crying|cry|depressed|lonely|miss|hurt|pain|😢|😭|💔|sorry|worried|scared|anxiety|stressed|dukhi|rona|udaas|pareshan|tension|sogam|kashtam|valikuthu|kanneer|feel\s?panren|romba\s?bad|vali|kavalai|thanimai|bayam)\b/i;
+  const angryWords = /\b(angry|mad|furious|pissed|annoyed|frustrated|wtf|🤬|😡|hate|gussa|chidh|irritate|kovam|erichhal|podhum|podhumda|porukka\s?mudiyala|veriethuthu)\b/i;
+  const urgentWords = /\b(urgent|emergency|asap|immediately|right now|hurry|quick|fast|sos|911|🚨|⚠️|critical|jaldi|turant|fatafat|abhi|udane|vegam|seekiram|urgent\s?a|konjam\s?fast|important\s?da)\b/i;
 
   if (urgentWords.test(t)) sentiment = "urgent";
   else if (angryWords.test(t)) sentiment = "angry";
@@ -73,7 +73,7 @@ function classifyIntent(text: string): {
 
   // ─── Does this need a reply? ───
   // Don't reply to "ok", "k", "👍", reactions, or farewells
-  const noReplyPatterns = /^(ok|k|kk|okay|👍|👌|🙏|thanks|thanku|ty|tq|hmm|mm|hm|oh|ohk|accha|acha)\s*\.?$/i;
+  const noReplyPatterns = /^(ok|k|kk|okay|👍|👌|🙏|thanks|thanku|ty|tq|hmm|mm|hm|oh|ohk|accha|acha|theek|thik|seri|serida|okda|okdi|hmda|aamam|haan|ha|ji|ok\s?va|seri\s?pa|ok\s?pa|ok\s?da|ok\s?machi|nandri|dhanyavaad|thenkyu|thanksu)\s*\.?$/i;
   const needsReply = !(noReplyPatterns.test(t) || intent === "farewell");
 
   return { intent, sentiment, needsReply };
@@ -90,10 +90,10 @@ function inferRelationship(
 ): string {
   const name = (contactName || "").toLowerCase();
 
-  // Name-based hints
-  if (/\b(mom|mum|mama|amma|dad|papa|baba|sis|bro|brother|sister|bhai|didi|bhaiya)\b/i.test(name))
+  // Name-based hints (English + Hindi + Tamil)
+  if (/\b(mom|mum|mama|amma|dad|papa|baba|sis|bro|brother|sister|bhai|didi|bhaiya|appa|aththai|chitthi|chitappa|periappa|periamma|thatha|paatti|anna|akka|thambi|thangai|maama|maami|chachi|chacha|tai|masi|nani|dada|dadi|athai|maman)\b/i.test(name))
     return "family";
-  if (/\b(sir|ma'am|prof|boss|manager|dr|doctor)\b/i.test(name))
+  if (/\b(sir|ma'am|prof|boss|manager|dr|doctor|teacher|principal|HOD|madam)\b/i.test(name))
     return "professional";
 
   // Analyze message formality from history
@@ -103,11 +103,11 @@ function inferRelationship(
   const allText = userMsgs.join(" ");
 
   // Check for formal language → professional
-  const formalMarkers = (allText.match(/\b(sir|ma'am|please|kindly|regards|thank you|noted|will do)\b/gi) || []).length;
-  // Check for casual language → friend
-  const casualMarkers = (allText.match(/\b(bro|dude|yaar|bhai|lol|haha|bruh|omg|wtf|lmao|oye)\b/gi) || []).length;
+  const formalMarkers = (allText.match(/\b(sir|ma'am|please|kindly|regards|thank you|noted|will do|madam|respected|acknowledge)\b/gi) || []).length;
+  // Check for casual language → friend (Hindi + Tamil + English slang)
+  const casualMarkers = (allText.match(/\b(bro|dude|yaar|bhai|lol|haha|bruh|omg|wtf|lmao|oye|da|di|dei|machi|machan|nanba|thala|thambi|anna|pa|vaa|po|semma|mass|vera\s?level|scene|seri|okda|hmda|machaa)\b/gi) || []).length;
   // Check for affection → close friend or family
-  const affectionMarkers = (allText.match(/\b(love|miss|baby|jaan|darling|sweetheart|❤️|😘|🥰)\b/gi) || []).length;
+  const affectionMarkers = (allText.match(/\b(love|miss|baby|jaan|darling|sweetheart|❤️|😘|🥰|kannu|chellam|kutty|bangaram|ra|raa|pyaar|kaadhal)\b/gi) || []).length;
 
   if (affectionMarkers > 2) return "close_personal";
   if (formalMarkers > casualMarkers + 2) return "professional";
