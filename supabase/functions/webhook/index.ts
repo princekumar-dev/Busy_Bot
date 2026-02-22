@@ -294,55 +294,115 @@ THEIR NEW MESSAGE: "${incomingMessage}"
 
 Reply as this person would — natural, short, human, context-aware:`;
 
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
-      {
+  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`;
+  const requestBody = JSON.stringify({
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: 0.9,
+      maxOutputTokens: 256,
+      topP: 0.95,
+      topK: 40,
+    },
+    // Use BLOCK_ONLY_HIGH — free-tier keys do NOT support BLOCK_NONE (returns 400)
+    safetySettings: [
+      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
+      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
+      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
+      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" },
+    ],
+  });
+
+  // Retry helper — try up to 2 times on transient errors (429, 503)
+  const MAX_RETRIES = 2;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
+      const res = await fetch(geminiUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.9,
-            maxOutputTokens: 150,
-            topP: 0.95,
-            topK: 40,
-          },
-          safetySettings: [
-            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
-          ],
-        }),
+        body: requestBody,
+      });
+
+      clearTimeout(timeout);
+
+      if (res.status === 429 || res.status === 503) {
+        console.warn(`Gemini ${res.status} on attempt ${attempt}/${MAX_RETRIES} — retrying...`);
+        if (attempt < MAX_RETRIES) {
+          await new Promise(r => setTimeout(r, attempt * 2000)); // 2s, 4s
+          continue;
+        }
+        console.error(`Gemini still ${res.status} after ${MAX_RETRIES} attempts`);
+        return fallbackText;
       }
-    );
 
-    clearTimeout(timeout);
+      if (!res.ok) {
+        const errBody = await res.text();
+        console.error(`Gemini API error ${res.status}:`, errBody.substring(0, 500));
 
-    if (!res.ok) {
-      const errBody = await res.text();
-      console.error("Gemini API error:", res.status, errBody);
+        // If 400 with "API_KEY_INVALID" or similar, don't retry
+        if (res.status === 400) {
+          if (errBody.includes("API_KEY_INVALID") || errBody.includes("INVALID_ARGUMENT")) {
+            console.error("Gemini API key is invalid — check settings");
+          } else {
+            console.error("Gemini 400 — possibly bad request payload");
+          }
+        }
+        return fallbackText;
+      }
+
+      const result = await res.json();
+      console.log("Gemini raw response keys:", Object.keys(result));
+
+      // Check if blocked by safety filter
+      if (result.promptFeedback?.blockReason) {
+        console.warn("Gemini blocked by safety filter:", result.promptFeedback.blockReason);
+        return fallbackText;
+      }
+
+      const candidate = result.candidates?.[0];
+      if (!candidate) {
+        console.error("Gemini returned no candidates:", JSON.stringify(result).substring(0, 300));
+        return fallbackText;
+      }
+
+      // Check finish reason
+      if (candidate.finishReason === "SAFETY") {
+        console.warn("Gemini candidate blocked by safety:", candidate.safetyRatings);
+        return fallbackText;
+      }
+
+      const reply = candidate.content?.parts?.[0]?.text?.trim();
+
+      if (!reply) {
+        console.error("Gemini returned empty text. Candidate:", JSON.stringify(candidate).substring(0, 300));
+        return fallbackText;
+      }
+
+      console.log(`Gemini reply (attempt ${attempt}): "${reply.substring(0, 100)}"`);
+
+      // Clean up — remove surrounding quotes / backticks Gemini sometimes adds
+      return reply.replace(/^["'`]+|["'`]+$/g, "").trim();
+
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (errMsg.includes("abort") || errMsg.includes("AbortError")) {
+        console.error(`Gemini timed out on attempt ${attempt}/${MAX_RETRIES}`);
+      } else {
+        console.error(`Gemini call failed on attempt ${attempt}/${MAX_RETRIES}:`, errMsg);
+      }
+
+      if (attempt < MAX_RETRIES) {
+        await new Promise(r => setTimeout(r, attempt * 2000));
+        continue;
+      }
       return fallbackText;
     }
-
-    const result = await res.json();
-    const reply = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-
-    if (!reply) {
-      console.error("Gemini returned empty response");
-      return fallbackText;
-    }
-
-    // Clean up — remove surrounding quotes / backticks Gemini sometimes adds
-    return reply.replace(/^["'`]+|["'`]+$/g, "").trim();
-  } catch (err) {
-    console.error("Gemini API call failed:", err);
-    return fallbackText;
   }
+
+  return fallbackText;
 }
 
 /* ──────────────────────────────────────────────────────────
@@ -641,18 +701,22 @@ serve(async (req) => {
 
       let replyText: string;
 
-      if (settings.gemini_api_key) {
+      const geminiKey = (settings.gemini_api_key || "").trim();
+      if (geminiKey && geminiKey.length > 10) {
+        console.log(`Using Gemini for smart reply (key: ${geminiKey.substring(0, 6)}...)`);
         replyText = await generateSmartReply(
           text,
           contactName,
           personality,
           (recentMessages || []).reverse(),
-          settings.gemini_api_key,
+          geminiKey,
           fallback,
           intentData,
           relationship
         );
+        console.log(`Gemini reply result: "${replyText.substring(0, 80)}" (is_fallback: ${replyText === fallback})`);
       } else {
+        console.log("No valid Gemini API key — using intent-based fallback");
         // No Gemini — contextual fallback based on intent
         if (intentData.intent === "greeting") {
           replyText = `Hey! Kinda caught up rn, will text you back soon 👋`;
