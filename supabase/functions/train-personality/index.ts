@@ -19,29 +19,105 @@ const corsHeaders = {
    Helper: Call Gemini with a prompt and parse JSON response
    ────────────────────────────────────────────────────────── */
 
-async function callGeminiJSON(prompt: string, geminiKey: string): Promise<any> {
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.3, maxOutputTokens: 2048 },
-      }),
-    }
-  );
+async function callGeminiJSON(prompt: string, geminiKey: string, retries: number = 2): Promise<any> {
+  let lastErr: Error | null = null;
 
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Gemini API error ${res.status}: ${errText}`);
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    if (attempt > 0) {
+      // Wait before retry: 2s, then 5s
+      const waitMs = attempt === 1 ? 2000 : 5000;
+      console.log(`Gemini retry ${attempt}/${retries} — waiting ${waitMs}ms...`);
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000); // 20s timeout
+
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              temperature: 0.3,
+              maxOutputTokens: 2048,
+              responseMimeType: "application/json",
+            },
+          }),
+        }
+      );
+
+      clearTimeout(timeout);
+
+      if (res.status === 429) {
+        lastErr = new Error("Gemini API rate limit hit (429). Your free quota may be exhausted — wait a minute and try again, or check your API key at aistudio.google.com.");
+        if (attempt < retries) continue; // retry
+        throw lastErr;
+      }
+
+      if (res.status === 400) {
+        const errText = await res.text();
+        throw new Error(`Gemini API key invalid or request rejected (400): ${errText.substring(0, 200)}`);
+      }
+
+      if (!res.ok) {
+        const errText = await res.text();
+        lastErr = new Error(`Gemini API error ${res.status}: ${errText.substring(0, 300)}`);
+        if (attempt < retries) continue;
+        throw lastErr;
+      }
+
+      const result = await res.json();
+      let rawText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+
+      if (!rawText) {
+        lastErr = new Error("Gemini returned empty response");
+        if (attempt < retries) continue;
+        throw lastErr;
+      }
+
+      // Clean up common Gemini formatting issues
+      rawText = rawText
+        .replace(/```json\s*/gi, "")
+        .replace(/```\s*/g, "")
+        .replace(/,\s*}/g, "}")    // trailing commas before }
+        .replace(/,\s*]/g, "]")    // trailing commas before ]
+        .trim();
+
+      try {
+        return JSON.parse(rawText);
+      } catch (parseErr) {
+        // Try to extract JSON object from the response
+        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const cleaned = jsonMatch[0]
+            .replace(/,\s*}/g, "}")
+            .replace(/,\s*]/g, "]");
+          return JSON.parse(cleaned);
+        }
+        console.error("Raw Gemini text that failed to parse:", rawText.substring(0, 500));
+        lastErr = new Error(`JSON parse failed: ${String(parseErr)}`);
+        if (attempt < retries) continue;
+        throw lastErr;
+      }
+    } catch (err) {
+      clearTimeout(timeout);
+      if (err instanceof DOMException && err.name === "AbortError") {
+        lastErr = new Error("Gemini API timed out after 20s — try again or reduce message count");
+        if (attempt < retries) continue;
+        throw lastErr;
+      }
+      if (lastErr && err === lastErr) throw err; // already handled above
+      lastErr = err instanceof Error ? err : new Error(String(err));
+      if (attempt >= retries) throw lastErr;
+    }
   }
 
-  const result = await res.json();
-  let rawText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
-  rawText = rawText.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-
-  return JSON.parse(rawText);
+  throw lastErr || new Error("Unknown Gemini error after retries");
 }
 
 serve(async (req) => {
@@ -75,19 +151,24 @@ serve(async (req) => {
     }
 
     // ─── Get all user's outgoing messages with conversation context ───
-    const { data: userMessages, error: msgErr } = await supabase
+    const { data: rawMessages, error: msgErr } = await supabase
       .from("messages")
       .select("content, created_at, conversation_id")
       .eq("user_id", user_id)
       .eq("sender", "user")
       .order("created_at", { ascending: false })
-      .limit(500);
+      .limit(200);
 
-    if (msgErr || !userMessages || userMessages.length < 3) {
+    // Filter out media-only messages
+    const userMessages = (rawMessages || []).filter(
+      (m) => m.content && m.content !== "[media message]" && m.content.trim().length > 0
+    );
+
+    if (msgErr || userMessages.length < 3) {
       return new Response(
         JSON.stringify({
           error: "Not enough messages to train. Keep chatting with BusyBot OFF — it learns from your real messages!",
-          message_count: userMessages?.length || 0,
+          message_count: userMessages.length,
           tip: "Send at least 10-20 messages naturally while BusyBot is turned off.",
         }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -99,7 +180,10 @@ serve(async (req) => {
        Analyze all messages together for overall personality
        ═══════════════════════════════════════════════════════ */
 
-    const allMessagesText = userMessages.map((m) => m.content).join("\n");
+    // Truncate individual messages to 200 chars to keep prompt within limits
+    const allMessagesText = userMessages
+      .map((m) => m.content.length > 200 ? m.content.substring(0, 200) + "..." : m.content)
+      .join("\n");
 
     const globalPrompt = `Analyze these WhatsApp messages sent by ONE person. Extract their UNIQUE communication style and personality patterns.
 
@@ -141,10 +225,58 @@ IMPORTANT: Base this ONLY on the actual messages above. Don't invent patterns th
       learnedStyle = await callGeminiJSON(globalPrompt, geminiKey);
     } catch (err) {
       console.error("Global analysis failed:", err);
-      return new Response(
-        JSON.stringify({ error: "Failed to analyze global style", details: String(err) }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      // Fallback: build a basic style from raw message analysis instead of failing entirely
+      const errMsg = String(err);
+      if (errMsg.includes("429") || errMsg.includes("rate limit") || errMsg.includes("quota")) {
+        return new Response(
+          JSON.stringify({
+            error: "Gemini API rate limit reached. Wait 1-2 minutes and try again. If this keeps happening, check your API key quota at aistudio.google.com.",
+            details: errMsg,
+          }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      if (errMsg.includes("400") || errMsg.includes("invalid")) {
+        return new Response(
+          JSON.stringify({
+            error: "Your Gemini API key appears to be invalid. Go to Settings and update it with a valid key from aistudio.google.com/apikey.",
+            details: errMsg,
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      // For other errors: build basic fallback style from raw messages
+      console.log("Building fallback style from raw message analysis...");
+      const allTexts = userMessages.map((m) => m.content.toLowerCase());
+      const allJoined = allTexts.join(" ");
+      const wordCounts = userMessages.map((m) => m.content.split(/\s+/).length);
+      const avgWords = Math.round(wordCounts.reduce((a, b) => a + b, 0) / wordCounts.length);
+
+      // Detect emojis
+      const emojiRegex = /[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu;
+      const allEmojis = allJoined.match(emojiRegex) || [];
+      const emojiFreq: Record<string, number> = {};
+      for (const e of allEmojis) { emojiFreq[e] = (emojiFreq[e] || 0) + 1; }
+      const topEmojis = Object.entries(emojiFreq).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([e]) => e);
+
+      learnedStyle = {
+        greetings: [],
+        affirmatives: [],
+        negatives: [],
+        fillers: [],
+        closings: [],
+        emoji_favorites: topEmojis,
+        avg_word_count: avgWords,
+        detected_languages: ["unknown"],
+        primary_language: "unknown",
+        language_mix: "Could not analyze — Gemini API failed",
+        tone_summary: "Could not analyze — Gemini API failed. Retry training.",
+        signature_phrases: [],
+        abbreviation_style: "",
+        code_switching_pattern: "",
+        _fallback: true,
+        _fallback_reason: errMsg.substring(0, 200),
+      };
     }
 
     /* ═══════════════════════════════════════════════════════
@@ -244,15 +376,21 @@ Return ONLY a valid JSON (no markdown, no code blocks):
        SAVE TO DATABASE
        ═══════════════════════════════════════════════════════ */
 
+    // Upsert — create row if it doesn't exist, update if it does
     const { error: updateErr } = await supabase
       .from("personality_profiles")
-      .update({
-        learned_style: learnedStyle,
-        last_trained_at: new Date().toISOString(),
-        training_message_count: userMessages.length,
-        avg_length: learnedStyle.avg_word_count || 15,
-      })
-      .eq("user_id", user_id);
+      .upsert(
+        {
+          user_id: user_id,
+          learned_style: learnedStyle,
+          last_trained_at: new Date().toISOString(),
+          training_message_count: userMessages.length,
+          avg_length: learnedStyle.avg_word_count || 15,
+          tone: learnedStyle.tone_summary ? (learnedStyle.tone_summary.toLowerCase().includes("formal") ? "formal" : "casual") : "casual",
+          emoji_usage: (learnedStyle.emoji_favorites?.length || 0) > 0,
+        },
+        { onConflict: "user_id" }
+      );
 
     if (updateErr) {
       console.error("Failed to save learned style:", updateErr);

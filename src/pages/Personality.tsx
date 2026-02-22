@@ -88,9 +88,10 @@ export default function Personality() {
       });
       const data = await res.json();
       if (!res.ok) {
+        const detail = data.details ? `\n${data.details}` : "";
         toast({
           title: "Training Issue",
-          description: data.error || "Training failed",
+          description: (data.error || "Training failed") + detail,
           variant: "destructive",
         });
       } else {
@@ -102,9 +103,24 @@ export default function Personality() {
           title: "🧠 Training Complete!",
           description: `Analyzed ${data.messages_analyzed} messages across ${contactCount} contacts. Your AI now knows your style!`,
         });
+
+        // Re-fetch the profile to ensure UI is in sync with DB
+        const { data: refreshed } = await supabase
+          .from("personality_profiles")
+          .select("*")
+          .eq("user_id", user.id)
+          .single();
+        if (refreshed) {
+          setTone(refreshed.tone);
+          setAvgLength(refreshed.avg_length);
+          setEmojiUsage(refreshed.emoji_usage);
+          setLearnedStyle((refreshed as any).learned_style || null);
+          setLastTrained((refreshed as any).last_trained_at || null);
+          setTrainingMsgCount((refreshed as any).training_message_count || 0);
+        }
       }
     } catch (err) {
-      toast({ title: "Error", description: "Failed to train AI", variant: "destructive" });
+      toast({ title: "Error", description: `Failed to train AI: ${String(err)}`, variant: "destructive" });
     }
     setTraining(false);
     setTrainingStep("");
