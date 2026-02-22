@@ -697,37 +697,115 @@ serve(async (req) => {
       console.log(`Relationship with ${contactName}: ${relationship}`);
 
       // ─── Generate smart reply ───
-      const fallback = settings.auto_reply_text || "Hey, caught up with something rn. Will text you back soon!";
-
       let replyText: string;
+      let geminiUsed = false;
+      let geminiError: string | null = null;
 
-      const geminiKey = (settings.gemini_api_key || "").trim();
+      // Access gemini_api_key — the column might not exist if DB migration wasn't run
+      const rawGeminiKey = (settings as any).gemini_api_key;
+      const geminiKey = (typeof rawGeminiKey === "string" ? rawGeminiKey : "").trim();
+      
+      console.log(`[${userId}] Gemini key check: raw=${typeof rawGeminiKey}, length=${geminiKey.length}, valid=${geminiKey.length > 10}`);
+
+      // The static fallback from settings — used as absolute last resort
+      const staticFallback = settings.auto_reply_text || "Hey, caught up with something rn. Will text you back soon!";
+
       if (geminiKey && geminiKey.length > 10) {
-        console.log(`Using Gemini for smart reply (key: ${geminiKey.substring(0, 6)}...)`);
-        replyText = await generateSmartReply(
+        console.log(`[${userId}] Using Gemini for smart reply (key: ${geminiKey.substring(0, 8)}...)`);
+        const geminiResult = await generateSmartReply(
           text,
           contactName,
           personality,
           (recentMessages || []).reverse(),
           geminiKey,
-          fallback,
+          "__GEMINI_FAILED__", // Use sentinel value so we can detect Gemini failure vs success
           intentData,
           relationship
         );
-        console.log(`Gemini reply result: "${replyText.substring(0, 80)}" (is_fallback: ${replyText === fallback})`);
-      } else {
-        console.log("No valid Gemini API key — using intent-based fallback");
-        // No Gemini — contextual fallback based on intent
-        if (intentData.intent === "greeting") {
-          replyText = `Hey! Kinda caught up rn, will text you back soon 👋`;
-        } else if (intentData.intent === "emotional" && intentData.sentiment === "sad") {
-          replyText = `Hey, I see your message. I'll call you back soon, just in something rn ❤️`;
-        } else if (intentData.intent === "question") {
-          replyText = `${fallback} Will answer that properly when I'm free.`;
-        } else if (urgency === "important") {
-          replyText = `${fallback} Noted this seems important — will prioritize it.`;
+        
+        if (geminiResult !== "__GEMINI_FAILED__") {
+          // Gemini succeeded!
+          geminiUsed = true;
+          replyText = geminiResult;
+          console.log(`[${userId}] ✅ Gemini reply: "${replyText.substring(0, 80)}"`);
         } else {
-          replyText = fallback;
+          // Gemini failed — fall through to NLP-based contextual replies
+          geminiError = "Gemini API call failed (check API key in Settings)";
+          console.warn(`[${userId}] ❌ Gemini failed — falling back to NLP-based reply`);
+          replyText = ""; // Will be set below
+        }
+      }
+
+      // NLP-based contextual replies — used when Gemini is unavailable or fails
+      if (!geminiUsed) {
+        console.log(`[${userId}] Using NLP-based contextual fallback (intent: ${intentData.intent}, sentiment: ${intentData.sentiment})`);
+
+        // Build context-aware replies based on intent + sentiment + relationship
+        const name = contactName ? contactName.split(" ")[0] : "";
+        const namePrefix = name ? `${name}, ` : "";
+
+        if (intentData.intent === "greeting") {
+          const greetings = [
+            `Hey${name ? " " + name : ""}! Caught up in something, will text you back soon 👋`,
+            `Yo${name ? " " + name : ""}! Busy rn, will hit you up in a bit`,
+            `Heyy! In the middle of something, brb soon 🙌`,
+            `Hi${name ? " " + name : ""}! Can't talk rn, will get back to you shortly`,
+          ];
+          replyText = greetings[Math.floor(Math.random() * greetings.length)];
+        } else if (intentData.intent === "emotional") {
+          if (intentData.sentiment === "sad") {
+            replyText = `${namePrefix}Hey, I saw your message. I really want to talk about this properly — just in the middle of something rn. Will call you soon ❤️`;
+          } else if (intentData.sentiment === "angry") {
+            replyText = `${namePrefix}I hear you, and I'm not ignoring this. Just can't respond properly rn — will get back to you ASAP.`;
+          } else {
+            replyText = `${namePrefix}I see your message! Can't reply properly rn but will soon 🙏`;
+          }
+        } else if (intentData.intent === "question") {
+          const questionReplies = [
+            `${namePrefix}Good question! Can't answer properly rn — will get back to you on this soon`,
+            `${namePrefix}I'll answer that when I'm free, just busy with something atm`,
+            `Noted! Will reply to this properly in a bit 👍`,
+          ];
+          replyText = questionReplies[Math.floor(Math.random() * questionReplies.length)];
+        } else if (intentData.intent === "request") {
+          replyText = `${namePrefix}Got it! I'll look into this once I'm free. Busy atm but won't forget 👍`;
+        } else if (intentData.intent === "follow_up") {
+          const followUps = [
+            `${namePrefix}Hey! Sorry, still caught up. Will get back to you soon, not ignoring you! 🙏`,
+            `Still here! Just busy rn — will text you back properly soon`,
+            `${namePrefix}Saw your messages! Just can't respond properly atm, hang tight 😊`,
+          ];
+          replyText = followUps[Math.floor(Math.random() * followUps.length)];
+        } else if (urgency === "emergency" || urgency === "important") {
+          replyText = `${namePrefix}Noted — this seems important. I'm in something rn but will prioritize this. Give me a few minutes 🙏`;
+        } else {
+          // General statement — casual reply
+          const generalReplies = [
+            `${namePrefix}Gotcha! Busy rn but will reply properly soon`,
+            `${namePrefix}Hey, caught up with something atm. Will text back in a bit!`,
+            `${namePrefix}Can't chat rn, will get back to you soon 👍`,
+          ];
+          replyText = generalReplies[Math.floor(Math.random() * generalReplies.length)];
+        }
+
+        // Adapt language to match the contact's detected language
+        if (intentData.detectedLanguage === "tanglish" || intentData.detectedLanguage === "tanglish_light") {
+          // Quick Tanglish adaptations
+          replyText = replyText
+            .replace(/^Hey /, "Hey da ")
+            .replace(/^Hi /, "Hi da ")
+            .replace("Caught up", "Busy ah irukken")
+            .replace("will text you back soon", "konjam wait pannu, reply pannuren")
+            .replace("Can't talk rn", "Ippo pesa mudiyala")
+            .replace("will get back to you", "aprom msg pannuren");
+        } else if (intentData.detectedLanguage === "hinglish" || intentData.detectedLanguage === "hinglish_light") {
+          replyText = replyText
+            .replace(/^Hey /, "Hey yaar ")
+            .replace(/^Hi /, "Hi bhai ")
+            .replace("Caught up", "Kuch kaam mein busy hu")
+            .replace("will text you back soon", "thodi der mein reply karta hu")
+            .replace("Can't talk rn", "Abhi baat nahi ho payega")
+            .replace("will get back to you", "baad mein msg karta hu");
         }
       }
 
@@ -759,12 +837,14 @@ serve(async (req) => {
             intent: intentData.intent,
             sentiment: intentData.sentiment,
             relationship,
+            gemini_used: geminiUsed,
+            gemini_error: geminiError,
             reply: replyText.substring(0, 80),
           });
         } else {
           const errText = await sendRes.text();
           console.error("Send failed:", sendRes.status, errText);
-          results.push({ user_id: userId, action: "send_failed", error: errText.substring(0, 100) });
+          results.push({ user_id: userId, action: "send_failed", gemini_used: geminiUsed, reply_preview: replyText.substring(0, 80), error: errText.substring(0, 100) });
         }
       } catch (sendErr) {
         console.error("Send error:", sendErr);
