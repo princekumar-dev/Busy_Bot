@@ -10,9 +10,11 @@ const STATUS_POLL_INTERVAL = 3_000; // Poll connection state every 3s after QR i
 export function EvoQRConnector() {
     const { toast } = useToast();
     const [loading, setLoading] = useState(false);
+    const [loadingStep, setLoadingStep] = useState("");
     const [qrCode, setQrCode] = useState<string | null>(null);
     const [status, setStatus] = useState<"idle" | "connecting" | "connected" | "error">("idle");
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [instanceInfo, setInstanceInfo] = useState<string | null>(null);
 
     const qrRefreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
     const statusPollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -201,28 +203,89 @@ export function EvoQRConnector() {
         setStatus("connecting");
         setErrorMessage(null);
         setQrCode(null);
+        setInstanceInfo(null);
 
         const baseUrl = getBaseUrl();
         const headers = getHeaders();
 
         try {
-            // 1. Check if already connected
-            const alreadyConnected = await checkConnectionState();
-            if (alreadyConnected) {
-                setStatus("connected");
-                setLoading(false);
-                // Ensure webhook is registered even if already connected
-                await registerWebhook();
-                return;
+            // ─── STEP 1: Check if instance exists on Render ───
+            setLoadingStep("Checking Evolution API server...");
+            let instanceExists = false;
+            let instanceState = "unknown";
+
+            try {
+                const statusRes = await fetch(`${baseUrl}/instance/connectionState/${BOT_NAME}`, {
+                    method: "GET",
+                    headers,
+                });
+
+                if (statusRes.ok) {
+                    const statusData = await statusRes.json();
+                    instanceState = statusData?.instance?.state || "unknown";
+                    instanceExists = true;
+                    console.log(`Instance "${BOT_NAME}" found — state: ${instanceState}`);
+                    setInstanceInfo(`Instance "${BOT_NAME}" found (${instanceState})`);
+
+                    // Already connected!
+                    if (instanceState === "open") {
+                        setLoadingStep("Already connected!");
+                        setStatus("connected");
+                        setLoading(false);
+                        await registerWebhook();
+                        toast({ title: "Already Connected", description: `Instance "${BOT_NAME}" is already linked to WhatsApp.` });
+                        return;
+                    }
+                } else if (statusRes.status === 404) {
+                    instanceExists = false;
+                    console.log(`Instance "${BOT_NAME}" not found (404)`);
+                    setInstanceInfo(`Instance "${BOT_NAME}" not found`);
+                } else {
+                    // Other error — might be Render cold start, try to continue
+                    const errText = await statusRes.text();
+                    console.warn(`Connection state check returned ${statusRes.status}:`, errText);
+                    setInstanceInfo(`Server returned ${statusRes.status} — will try to create instance`);
+                    instanceExists = false;
+                }
+            } catch (fetchErr) {
+                // Network error — Render might be sleeping/cold starting
+                console.warn("Could not reach Evolution API — server may be starting up:", fetchErr);
+                setInstanceInfo("Server may be starting up (Render cold start)...");
+                setLoadingStep("Waiting for server to wake up...");
+                // Wait 5s and retry once
+                await new Promise(r => setTimeout(r, 5000));
+                try {
+                    const retryRes = await fetch(`${baseUrl}/instance/connectionState/${BOT_NAME}`, {
+                        method: "GET",
+                        headers,
+                    });
+                    if (retryRes.ok) {
+                        const retryData = await retryRes.json();
+                        instanceState = retryData?.instance?.state || "unknown";
+                        instanceExists = true;
+                        setInstanceInfo(`Instance "${BOT_NAME}" found (${instanceState})`);
+                        if (instanceState === "open") {
+                            setStatus("connected");
+                            setLoading(false);
+                            await registerWebhook();
+                            return;
+                        }
+                    } else if (retryRes.status === 404) {
+                        instanceExists = false;
+                        setInstanceInfo(`Instance "${BOT_NAME}" not found`);
+                    } else {
+                        instanceExists = false;
+                    }
+                } catch {
+                    throw new Error("Cannot reach Evolution API server. Check if your Render service is running at: " + baseUrl);
+                }
             }
 
-            // 2. Ensure instance exists — create if needed
-            const statusRes = await fetch(`${baseUrl}/instance/connectionState/${BOT_NAME}`, {
-                method: "GET",
-                headers,
-            });
+            // ─── STEP 2: Create instance if it doesn't exist ───
+            if (!instanceExists) {
+                setLoadingStep(`Creating instance "${BOT_NAME}"...`);
+                console.log(`Creating new instance: ${BOT_NAME}`);
 
-            if (statusRes.status === 404) {
                 const createRes = await fetch(`${baseUrl}/instance/create`, {
                     method: "POST",
                     headers,
@@ -246,38 +309,49 @@ export function EvoQRConnector() {
 
                 if (!createRes.ok) {
                     const errBody = await createRes.text();
-                    throw new Error(`Failed to create instance: ${createRes.status} ${errBody}`);
-                }
+                    // If "already exists", that's fine — just continue to connect
+                    if (errBody.toLowerCase().includes("already") || errBody.toLowerCase().includes("exists")) {
+                        console.log("Instance already exists, proceeding to connect...");
+                        setInstanceInfo(`Instance "${BOT_NAME}" already exists`);
+                    } else {
+                        throw new Error(`Failed to create instance: ${createRes.status} — ${errBody.substring(0, 200)}`);
+                    }
+                } else {
+                    const createData = await createRes.json();
+                    console.log("Instance created:", createData);
+                    setInstanceInfo(`Instance "${BOT_NAME}" created successfully`);
 
-                const createData = await createRes.json();
-                console.log("Evolution API create response:", createData);
-
-                // If create already returned a QR (qrcode: true), use it
-                const immediateQR = createData?.qrcode?.code || createData?.qrcode?.base64 || createData?.code;
-                if (immediateQR) {
-                    setQrCode(immediateQR);
-                    setStatus("idle");
-                    setLoading(false);
-                    startStatusPolling();
-                    // Start auto-refresh timer for QR
-                    qrRefreshTimer.current = setInterval(async () => {
-                        try {
-                            const newQR = await fetchNewQR();
-                            if (isMounted.current) setQrCode(newQR);
-                        } catch (err) {
-                            console.warn("QR auto-refresh failed:", err);
-                        }
-                    }, QR_REFRESH_INTERVAL);
-                    return;
+                    // If create already returned a QR code, use it immediately
+                    const immediateQR = createData?.qrcode?.code || createData?.qrcode?.base64 || createData?.code;
+                    if (immediateQR) {
+                        setQrCode(immediateQR);
+                        setStatus("idle");
+                        setLoading(false);
+                        setLoadingStep("");
+                        startStatusPolling();
+                        qrRefreshTimer.current = setInterval(async () => {
+                            try {
+                                const newQR = await fetchNewQR();
+                                if (isMounted.current) setQrCode(newQR);
+                            } catch (err) {
+                                console.warn("QR auto-refresh failed:", err);
+                            }
+                        }, QR_REFRESH_INTERVAL);
+                        return;
+                    }
                 }
+            } else {
+                setInstanceInfo(`Instance "${BOT_NAME}" exists — connecting...`);
             }
 
-            // 3. Fetch QR code via connect endpoint
+            // ─── STEP 3: Fetch QR code to link WhatsApp ───
+            setLoadingStep("Fetching QR code...");
             const qr = await fetchNewQR();
             setQrCode(qr);
             setStatus("idle");
+            setLoadingStep("");
 
-            // 4. Start auto-refresh: fetch a new QR every 15s so it never expires
+            // Auto-refresh QR every 15s
             qrRefreshTimer.current = setInterval(async () => {
                 try {
                     const newQR = await fetchNewQR();
@@ -287,13 +361,14 @@ export function EvoQRConnector() {
                 }
             }, QR_REFRESH_INTERVAL);
 
-            // 5. Start polling connection state to detect successful scan
+            // Poll for successful connection
             startStatusPolling();
 
         } catch (error) {
             console.error("QR Fetch Error:", error);
             setStatus("error");
             setErrorMessage(error instanceof Error ? error.message : "Failed to fetch QR code");
+            setLoadingStep("");
         } finally {
             setLoading(false);
         }
@@ -362,8 +437,15 @@ export function EvoQRConnector() {
                                     <li>Point your phone to this screen to capture the code</li>
                                 </ol>
 
+                                {instanceInfo && (
+                                    <div className="mt-3 flex items-start gap-2 text-blue-600 dark:text-blue-400 bg-blue-500/10 p-3 rounded-lg border border-blue-500/20">
+                                        <Smartphone className="h-4 w-4 shrink-0 mt-0.5" />
+                                        <p className="text-xs font-medium">{instanceInfo}</p>
+                                    </div>
+                                )}
+
                                 {errorMessage && (
-                                    <div className="mt-4 flex items-start gap-2 text-destructive bg-destructive/10 p-3 rounded-lg border border-destructive/20">
+                                    <div className="mt-3 flex items-start gap-2 text-destructive bg-destructive/10 p-3 rounded-lg border border-destructive/20">
                                         <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                                         <p className="text-xs">{errorMessage}</p>
                                     </div>
@@ -381,7 +463,7 @@ export function EvoQRConnector() {
                                 {loading ? (
                                     <span className="flex items-center gap-2">
                                         <RefreshCcw className="h-4 w-4 animate-spin" />
-                                        Generating QR...
+                                        {loadingStep || "Connecting..."}
                                     </span>
                                 ) : status === "connected" ? (
                                     <span className="flex items-center gap-2">
@@ -428,7 +510,7 @@ export function EvoQRConnector() {
                                     <div className="absolute inset-0 border-4 border-primary/20 rounded-lg rounded-br-none -m-2 opacity-50"></div>
                                     <RefreshCcw className="h-8 w-8 text-primary animate-spin" />
                                 </div>
-                                <span className="text-xs font-medium text-slate-500 animate-pulse">Scanning network...</span>
+                                <span className="text-xs font-medium text-slate-500 animate-pulse text-center px-2 leading-relaxed">{loadingStep || "Connecting..."}</span>
                             </div>
                         ) : qrCode ? (
                             // If it's a base64 image, render as <img>. Otherwise render as QR code from data string.
