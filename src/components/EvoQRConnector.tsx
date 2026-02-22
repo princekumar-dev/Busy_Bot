@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
-import { RefreshCcw, QrCode, Smartphone, Plug, AlertCircle } from "lucide-react";
+import { RefreshCcw, QrCode, Smartphone, Plug, AlertCircle, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const QR_REFRESH_INTERVAL = 15_000; // Refresh QR every 15s (WhatsApp QR expires in ~20s)
@@ -64,6 +64,49 @@ export function EvoQRConnector() {
             console.error("Error registering webhook:", err);
         }
     }, [API_URL, API_KEY, BOT_NAME, WEBHOOK_URL]);
+
+    const handleDeleteInstances = async () => {
+        setLoading(true);
+        try {
+            const baseUrl = getBaseUrl();
+            const headers = getHeaders();
+
+            const instancesToDelete = [BOT_NAME, "prevoiusinstance", "previousinstance"];
+
+            for (const instance of instancesToDelete) {
+                try {
+                    await fetch(`${baseUrl}/instance/delete/${instance}`, {
+                        method: "DELETE",
+                        headers,
+                    });
+                    await fetch(`${baseUrl}/instance/logout/${instance}`, {
+                        method: "DELETE",
+                        headers,
+                    });
+                } catch (e) {
+                    console.error(`Failed to delete/logout instance ${instance}`, e);
+                }
+            }
+
+            toast({
+                title: "Instances Deleted",
+                description: "Current and previous instances were deleted successfully.",
+            });
+
+            stopPolling();
+            setStatus("idle");
+            setQrCode(null);
+        } catch (error) {
+            console.error("Error deleting instances:", error);
+            toast({
+                title: "Error",
+                description: "Failed to delete instances.",
+                variant: "destructive"
+            });
+        } finally {
+            setLoading(false);
+        }
+    };
 
     // Stop all polling timers
     const stopPolling = useCallback(() => {
@@ -292,8 +335,8 @@ export function EvoQRConnector() {
                     </div>
                     <div className="flex items-center gap-2">
                         <span className={`text-xs font-medium px-2 py-1 rounded-full border ${status === "connected" ? "bg-green-500/10 text-green-500 border-green-500/20" :
-                                status === "error" ? "bg-destructive/10 text-destructive border-destructive/20" :
-                                    "bg-secondary text-muted-foreground border-border"
+                            status === "error" ? "bg-destructive/10 text-destructive border-destructive/20" :
+                                "bg-secondary text-muted-foreground border-border"
                             }`}>
                             {status === "connected" ? "Connected" : status === "error" ? "Error" : "Disconnected"}
                         </span>
@@ -328,29 +371,44 @@ export function EvoQRConnector() {
                             </div>
                         )}
 
-                        <Button
-                            onClick={fetchQR}
-                            disabled={loading || status === "connected"}
-                            variant={status === "error" ? "destructive" : "outline"}
-                            className={`w-full md:w-auto mt-4 transition-all ${loading ? 'opacity-70' : ''}`}
-                        >
-                            {loading ? (
+                        <div className="flex flex-col sm:flex-row gap-3 mt-4">
+                            <Button
+                                onClick={fetchQR}
+                                disabled={loading || status === "connected"}
+                                variant={status === "error" ? "destructive" : "outline"}
+                                className={`w-full flex-1 transition-all ${loading ? 'opacity-70' : ''}`}
+                            >
+                                {loading ? (
+                                    <span className="flex items-center gap-2">
+                                        <RefreshCcw className="h-4 w-4 animate-spin" />
+                                        Generating QR...
+                                    </span>
+                                ) : status === "connected" ? (
+                                    <span className="flex items-center gap-2">
+                                        <Plug className="h-4 w-4" />
+                                        Reconnect Device
+                                    </span>
+                                ) : (
+                                    <span className="flex items-center gap-2">
+                                        <QrCode className="h-4 w-4" />
+                                        {qrCode ? "Refresh QR Code" : "Generate Local QR"}
+                                    </span>
+                                )}
+                            </Button>
+
+                            <Button
+                                onClick={handleDeleteInstances}
+                                disabled={loading}
+                                variant="destructive"
+                                className={`w-full flex-1 transition-all ${loading ? 'opacity-70' : ''}`}
+                                title="Delete current and previous instances"
+                            >
                                 <span className="flex items-center gap-2">
-                                    <RefreshCcw className="h-4 w-4 animate-spin" />
-                                    Generating QR...
+                                    <Trash2 className="h-4 w-4" />
+                                    Delete Instances
                                 </span>
-                            ) : status === "connected" ? (
-                                <span className="flex items-center gap-2">
-                                    <Plug className="h-4 w-4" />
-                                    Reconnect Device
-                                </span>
-                            ) : (
-                                <span className="flex items-center gap-2">
-                                    <QrCode className="h-4 w-4" />
-                                    {qrCode ? "Refresh QR Code" : "Generate Local QR"}
-                                </span>
-                            )}
-                        </Button>
+                            </Button>
+                        </div>
                     </div>
 
                     <div className="shrink-0 flex flex-col items-center justify-center p-4 rounded-xl bg-white aspect-square w-48 border-2 border-primary/20 shadow-[0_0_30px_rgba(75,81,255,0.1)] relative">
