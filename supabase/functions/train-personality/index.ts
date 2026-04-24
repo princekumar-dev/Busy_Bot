@@ -233,13 +233,11 @@ function buildHeuristicContactStyle(contactName: string, messages: string[]) {
 function buildAIConfig(settings: any) {
   const provider = `${settings?.ai_provider || "openrouter"}`.trim().toLowerCase();
   const apiKey = typeof settings?.ai_api_key === "string" ? settings.ai_api_key.trim() : "";
-  const model = typeof settings?.ai_model === "string" && settings.ai_model.trim()
-    ? settings.ai_model.trim()
-    : "google/gemma-4-31b-it:free";
+  const model = typeof settings?.ai_model === "string" ? settings.ai_model.trim() : "";
   const baseUrl = typeof settings?.ai_base_url === "string" ? settings.ai_base_url.trim() : "";
   const providerName = typeof settings?.ai_provider_name === "string" ? settings.ai_provider_name.trim() : "";
 
-  if (!apiKey) return null;
+  if (!apiKey || !model) return null;
 
   if (provider === "custom") {
     const normalizedBase = baseUrl.replace(/\/$/, "");

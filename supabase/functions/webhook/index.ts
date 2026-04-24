@@ -236,6 +236,104 @@ function extractRecentReplyPairs(
   return pairs.slice(-limit);
 }
 
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function countWords(value: string): number {
+  return value.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function trimToWordBudget(value: string, budget: number): string {
+  const words = value.trim().split(/\s+/).filter(Boolean);
+  if (words.length <= budget) return value.trim();
+
+  let trimmed = words.slice(0, budget).join(" ").trim();
+  trimmed = trimmed.replace(/[,:;\-]+$/g, "");
+  if (!/[.!?]$/.test(trimmed)) trimmed += "...";
+  return trimmed;
+}
+
+function parseEmojiUsageLevel(value: any): "heavy" | "moderate" | "rarely" | "never" | null {
+  if (typeof value !== "string") return null;
+  const lower = value.toLowerCase();
+  if (lower.includes("heavy")) return "heavy";
+  if (lower.includes("moderate")) return "moderate";
+  if (lower.includes("rare") || lower.includes("low")) return "rarely";
+  if (lower.includes("never") || lower.includes("none")) return "never";
+  return null;
+}
+
+function deriveEffectiveStyleProfile(
+  personality: any,
+  contactName: string | null,
+  relationship: string
+) {
+  const learnedStyle = personality?.learned_style || {};
+  const perContact = getPerContactStyle(contactName, learnedStyle);
+
+  const sampleReplies = normalizeStyleList(perContact?.sample_replies);
+  const avgFromContact = sampleReplies.length
+    ? Math.round(sampleReplies.reduce((sum, value) => sum + countWords(value), 0) / sampleReplies.length)
+    : null;
+  const avgFromLearned = Number.isFinite(Number(learnedStyle?.avg_word_count))
+    ? Number(learnedStyle.avg_word_count)
+    : null;
+  const avgFromProfile = Number.isFinite(Number(personality?.avg_length))
+    ? Number(personality.avg_length)
+    : 15;
+
+  const avgLength = clampNumber(Math.round(avgFromContact || avgFromLearned || avgFromProfile || 15), 5, 40);
+
+  const baseTone = `${personality?.tone || "casual"}`.toLowerCase();
+  const contactTone = `${perContact?.tone || ""}`.toLowerCase();
+  const toneSummary = `${learnedStyle?.tone_summary || ""}`.toLowerCase();
+
+  let tone = baseTone;
+  if (contactTone) tone = contactTone;
+  else if (toneSummary) tone = toneSummary;
+
+  const baseFormality = Number.isFinite(Number(personality?.formality_score))
+    ? Number(personality.formality_score)
+    : 0.5;
+  let formality = baseFormality;
+
+  if (/formal|professional|polite/.test(contactTone) || /formal|professional|polite/.test(toneSummary)) formality += 0.2;
+  if (/casual|playful|chatty|slang/.test(contactTone) || /casual|playful|chatty/.test(toneSummary)) formality -= 0.2;
+  if (relationship === "professional") formality += 0.15;
+  if (relationship === "family" || relationship === "close_personal" || relationship === "friend") formality -= 0.1;
+  formality = clampNumber(formality, 0.05, 0.95);
+
+  const emojiLevel = parseEmojiUsageLevel(perContact?.emoji_usage);
+  let useEmoji = personality?.emoji_usage !== false;
+  if (emojiLevel === "never") useEmoji = false;
+  if (emojiLevel === "heavy" || emojiLevel === "moderate" || emojiLevel === "rarely") useEmoji = true;
+  if (!emojiLevel && Array.isArray(learnedStyle?.emoji_favorites) && learnedStyle.emoji_favorites.length === 0) {
+    useEmoji = useEmoji && false;
+  }
+
+  const commonPhrases = normalizeStyleList([
+    ...(Array.isArray(personality?.common_phrases) ? personality.common_phrases : []),
+    ...(Array.isArray(learnedStyle?.signature_phrases) ? learnedStyle.signature_phrases : []),
+    ...normalizeStyleList(learnedStyle?.greetings).slice(0, 2),
+    ...sampleReplies.map((value) => extractStyleLead(value)).filter(Boolean),
+  ]).slice(0, 8);
+
+  const toneLabel = formality >= 0.7 ? "polished and polite" : formality <= 0.35 ? "casual and relaxed" : "balanced and natural";
+  const stylePrompt = `Reply in the user's real style with ${avgLength} words on average, ${useEmoji ? "natural emoji usage" : "minimal/no emojis"}, and a ${toneLabel} tone. Prioritize phrases like ${commonPhrases.slice(0, 4).join(", ") || "their recent natural phrasing"}.`;
+
+  return {
+    learnedStyle,
+    perContact,
+    tone,
+    formality,
+    avgLength,
+    useEmoji,
+    commonPhrases,
+    stylePrompt,
+  };
+}
+
 function buildPersonalizedFallbackReply(
   incomingMessage: string,
   contactName: string | null,
@@ -245,12 +343,13 @@ function buildPersonalizedFallbackReply(
   relationship: string,
   staticFallback: string
 ): string {
-  const learnedStyle = personality?.learned_style || {};
-  const perContact = getPerContactStyle(contactName, learnedStyle);
+  const effective = deriveEffectiveStyleProfile(personality, contactName, relationship);
+  const learnedStyle = effective.learnedStyle;
+  const perContact = effective.perContact;
   const greetings = normalizeStyleList(learnedStyle.greetings);
   const affirmatives = normalizeStyleList(learnedStyle.affirmatives);
   const closings = normalizeStyleList(learnedStyle.closings);
-  const signatures = normalizeStyleList(learnedStyle.signature_phrases);
+  const signatures = effective.commonPhrases;
   const favoriteEmojis = normalizeStyleList(learnedStyle.emoji_favorites);
   const sampleReplies = normalizeStyleList(perContact?.sample_replies);
   const recentUserExamples = extractRecentUserExamples(conversationHistory, 4);
@@ -268,7 +367,7 @@ function buildPersonalizedFallbackReply(
   const primaryLanguage = `${perContact?.language || learnedStyle.primary_language || intentData.detectedLanguage || ""}`.toLowerCase();
   const isTamilStyle = primaryLanguage.includes("tamil") || primaryLanguage.includes("tanglish");
   const isHindiStyle = primaryLanguage.includes("hindi") || primaryLanguage.includes("hinglish");
-  const emoji = favoriteEmojis[0] ? ` ${favoriteEmojis[0]}` : "";
+  const emoji = effective.useEmoji && favoriteEmojis[0] ? ` ${favoriteEmojis[0]}` : "";
   const shortTopic = incomingMessage.trim().split(/\s+/).slice(0, 6).join(" ");
 
   const busyPhrase = isTamilStyle
@@ -331,19 +430,25 @@ function buildPersonalizedFallbackReply(
     .replace(/\s+/g, " ")
     .trim();
 
-  return stitched || staticFallback;
+  const targetWords = clampNumber(effective.avgLength + (intentData.intent === "emotional" ? 4 : 0), 6, 45);
+  let finalized = trimToWordBudget(stitched || staticFallback, targetWords);
+
+  // Keep fallback consistent with learned emoji preference.
+  if (!effective.useEmoji) {
+    finalized = finalized.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "").replace(/\s+/g, " ").trim();
+  }
+
+  return finalized || staticFallback;
 }
 
 function buildAIConfig(settings: any) {
   const provider = `${settings?.ai_provider || "openrouter"}`.trim().toLowerCase();
   const apiKey = typeof settings?.ai_api_key === "string" ? settings.ai_api_key.trim() : "";
-  const model = typeof settings?.ai_model === "string" && settings.ai_model.trim()
-    ? settings.ai_model.trim()
-    : "google/gemma-4-31b-it:free";
+  const model = typeof settings?.ai_model === "string" ? settings.ai_model.trim() : "";
   const baseUrl = typeof settings?.ai_base_url === "string" ? settings.ai_base_url.trim() : "";
   const providerName = typeof settings?.ai_provider_name === "string" ? settings.ai_provider_name.trim() : "";
 
-  if (!apiKey) return null;
+  if (!apiKey || !model) return null;
 
   if (provider === "custom") {
     const normalizedBase = baseUrl.replace(/\/$/, "");
@@ -397,13 +502,14 @@ async function generateSmartReply(
   const historyStr =
     historyLines.join("\n") || "(First message from this contact)";
 
-  // Extract personality traits
-  const tone = personality?.tone || "casual";
-  const avgLength = personality?.avg_length || 15;
-  const useEmoji = personality?.emoji_usage !== false;
-  const commonPhrases = (personality?.common_phrases || []).join(", ");
-  const formality = personality?.formality_score || 0.5;
-  const learnedStyle = personality?.learned_style || {};
+  // Auto-derive style for this specific contact from trained data + manual overrides.
+  const effective = deriveEffectiveStyleProfile(personality, contactName, relationship);
+  const tone = effective.tone || "casual";
+  const avgLength = effective.avgLength || 15;
+  const useEmoji = effective.useEmoji;
+  const commonPhrases = effective.commonPhrases.join(", ");
+  const formality = effective.formality;
+  const learnedStyle = effective.learnedStyle || {};
   const recentUserExamples = extractRecentUserExamples(conversationHistory, 5);
   const recentReplyPairs = extractRecentReplyPairs(conversationHistory, contactName, 4);
 
@@ -439,7 +545,7 @@ async function generateSmartReply(
     learnedContext += `\n- Recent real replies from you: ${recentUserExamples.map((value) => `"${value}"`).join(", ")}`;
 
   // Per-contact learned patterns
-  const perContact = getPerContactStyle(contactName, learnedStyle);
+  const perContact = effective.perContact;
   // Fuzzy match — try partial name match if exact key doesn't work
   let perContactContext = "";
   if (perContact) {
@@ -496,6 +602,7 @@ YOUR PERSONALITY PROFILE:
 - Formality: ${Math.round(formality * 100)}% (0%=max casual, 100%=max formal)
 - Typical message length: ~${avgLength} words
 - Emojis: ${useEmoji ? "Use naturally — match this person's emoji habits" : "Rarely/never use emojis"}
+ - Auto style directive: ${effective.stylePrompt}
 ${commonPhrases ? `- Common phrases: ${commonPhrases}` : ""}${learnedContext}${perContactContext}
 
 RELATIONSHIP: ${relationshipGuide}

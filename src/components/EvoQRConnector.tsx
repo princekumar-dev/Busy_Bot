@@ -532,9 +532,9 @@ export function EvoQRConnector() {
                     </div>
                 </div>
 
-                <div className="flex flex-col md:flex-row gap-8 items-center justify-between p-4 rounded-xl bg-secondary/30 border border-border/50">
+                <div className="flex flex-col md:flex-row gap-8 items-start md:items-center justify-between p-4 rounded-xl bg-secondary/30 border border-border/50">
 
-                    <div className="flex-1 space-y-4">
+                    <div className="flex-1 space-y-4 min-h-[192px]">
                         {status === "connected" ? (
                             <div className="space-y-2">
                                 <h4 className="text-sm font-medium text-foreground">Device Linked Successfully</h4>
@@ -572,7 +572,7 @@ export function EvoQRConnector() {
                                 onClick={fetchQR}
                                 disabled={loading || status === "connected"}
                                 variant={status === "error" ? "destructive" : "outline"}
-                                className={`w-full flex-1 transition-all ${loading ? 'opacity-70' : ''}`}
+                                className={`w-full sm:w-auto flex-1 sm:flex-none sm:min-w-[140px] transition-all ${loading ? 'opacity-70' : ''}`}
                             >
                                 {loading ? (
                                     <span className="flex items-center gap-2">
@@ -596,7 +596,7 @@ export function EvoQRConnector() {
                                 onClick={handleDeleteInstances}
                                 disabled={loading}
                                 variant="destructive"
-                                className={`w-full flex-1 transition-all ${loading ? 'opacity-70' : ''}`}
+                                className={`w-full sm:w-auto flex-1 sm:flex-none sm:min-w-[140px] transition-all ${loading ? 'opacity-70' : ''}`}
                                 title="Delete current and previous instances"
                             >
                                 <span className="flex items-center gap-2">
