@@ -35,6 +35,7 @@ export default function SettingsPage() {
   const [aiModel, setAiModel] = useState(DEFAULT_OPENROUTER_MODEL);
   const [aiBaseUrl, setAiBaseUrl] = useState("");
   const [showAiKey, setShowAiKey] = useState(false);
+  const [apiValidation, setApiValidation] = useState<'unknown' | 'valid' | 'invalid' | 'inconclusive'>('unknown');
 
   useEffect(() => {
     if (!user) return;
@@ -157,6 +158,7 @@ export default function SettingsPage() {
 
     const validation = await validateApiKey();
     if (validation === false) {
+      setApiValidation('invalid');
       toast({
         title: "Invalid API key",
         description: "The API key was rejected by the provider (401/403). Please check and try again.",
@@ -166,12 +168,15 @@ export default function SettingsPage() {
       return;
     }
     if (validation === null && trimmedApiKey) {
+      setApiValidation('inconclusive');
       toast({
         title: "Key validation inconclusive",
         description:
           "Unable to verify the API key due to network/CORS or provider response. The key will still be saved, but if generation fails you may need to recheck the key or configure a server-side validation.",
         variant: "warning",
       });
+    } else if (validation === true) {
+      setApiValidation('valid');
     }
 
     const { error } = await supabase
@@ -264,7 +269,13 @@ export default function SettingsPage() {
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label className="font-display text-sm text-foreground">Provider</Label>
-              <Select value={aiProvider} onValueChange={(value: AIProvider) => setAiProvider(value)}>
+              <Select
+                value={aiProvider}
+                onValueChange={(value: AIProvider) => {
+                  setAiProvider(value);
+                  setApiValidation('unknown');
+                }}
+              >
                 <SelectTrigger className="border-border bg-secondary/50">
                   <SelectValue placeholder="Select provider" />
                 </SelectTrigger>
@@ -282,7 +293,10 @@ export default function SettingsPage() {
                   className="border-border bg-secondary/50"
                   placeholder="My provider"
                   value={aiProviderName}
-                  onChange={(e) => setAiProviderName(e.target.value)}
+                  onChange={(e) => {
+                    setAiProviderName(e.target.value);
+                    setApiValidation('unknown');
+                  }}
                 />
               </div>
             )}
@@ -297,7 +311,10 @@ export default function SettingsPage() {
                   className="border-border bg-secondary/50 pr-10"
                   placeholder={isCustomProvider ? "Paste your provider API key" : "sk-or-v1-..."}
                   value={aiApiKey}
-                  onChange={(e) => setAiApiKey(e.target.value)}
+                  onChange={(e) => {
+                    setAiApiKey(e.target.value);
+                    setApiValidation('unknown');
+                  }}
                 />
                 <button
                   type="button"
@@ -315,7 +332,10 @@ export default function SettingsPage() {
                 className="border-border bg-secondary/50"
                 placeholder={DEFAULT_OPENROUTER_MODEL}
                 value={aiModel}
-                onChange={(e) => setAiModel(e.target.value)}
+                onChange={(e) => {
+                  setAiModel(e.target.value);
+                  setApiValidation('unknown');
+                }}
               />
             </div>
 
@@ -326,7 +346,10 @@ export default function SettingsPage() {
                   className="border-border bg-secondary/50"
                   placeholder="https://api.example.com/v1"
                   value={aiBaseUrl}
-                  onChange={(e) => setAiBaseUrl(e.target.value)}
+                  onChange={(e) => {
+                    setAiBaseUrl(e.target.value);
+                    setApiValidation('unknown');
+                  }}
                 />
               </div>
             )}
@@ -342,9 +365,41 @@ export default function SettingsPage() {
           )}
 
           <div className="mt-3 flex items-center gap-1.5">
-            <div className={`h-2 w-2 rounded-full ${providerReady ? "bg-green-500 animate-pulse" : "bg-yellow-500"}`} />
-            <span className={`text-xs font-medium ${providerReady ? "text-green-500" : "text-yellow-500"}`}>
-              {providerReady ? `Using ${providerLabel} with model ${aiModel.trim()}` : "Using personalized fallback mode"}
+            <div
+              className={`h-2 w-2 rounded-full ${
+                apiValidation === 'valid'
+                  ? 'bg-green-500 animate-pulse'
+                  : apiValidation === 'invalid'
+                  ? 'bg-red-500'
+                  : apiValidation === 'inconclusive'
+                  ? 'bg-yellow-500'
+                  : providerReady
+                  ? 'bg-green-500 animate-pulse'
+                  : 'bg-yellow-500'
+              }`}
+            />
+            <span
+              className={`text-xs font-medium ${
+                apiValidation === 'valid'
+                  ? 'text-green-500'
+                  : apiValidation === 'invalid'
+                  ? 'text-red-500'
+                  : apiValidation === 'inconclusive'
+                  ? 'text-yellow-500'
+                  : providerReady
+                  ? 'text-green-500'
+                  : 'text-yellow-500'
+              }`}
+            >
+              {apiValidation === 'valid'
+                ? `API key validated — Using ${providerLabel} with model ${aiModel.trim()}`
+                : apiValidation === 'invalid'
+                ? 'API key invalid — check and try again'
+                : apiValidation === 'inconclusive'
+                ? 'Key validation inconclusive — saved anyway'
+                : providerReady
+                ? `Using ${providerLabel} with model ${aiModel.trim()}`
+                : 'Using personalized fallback mode'}
             </span>
           </div>
         </div>
