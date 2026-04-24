@@ -65,23 +65,132 @@ export default function SettingsPage() {
     setSaving(true);
     const trimmedBaseUrl = aiBaseUrl.trim();
     const trimmedProviderName = aiProviderName.trim();
-    const trimmedModel = aiModel.trim() || DEFAULT_OPENROUTER_MODEL;
+    const trimmedModel = aiModel.trim();
     const trimmedApiKey = aiApiKey.trim();
+
+    if (trimmedApiKey && !trimmedModel) {
+      toast({
+        title: "Model required",
+        description: "Enter the exact model name you want BusyBot to use, or clear the API key to stay on offline fallback mode.",
+        variant: "destructive",
+      });
+      setSaving(false);
+      return;
+    }
+
+    if (aiProvider === "custom" && trimmedApiKey && !trimmedBaseUrl) {
+      toast({
+        title: "Base URL required",
+        description: "Custom providers need a base URL so BusyBot knows where to send the request.",
+        variant: "destructive",
+      });
+      setSaving(false);
+      return;
+    }
+
+    // Validate API key where possible. If validation cannot be completed due to
+    // network/CORS/timeouts we allow saving but warn the user. If the provider
+    // explicitly rejects the key (401/403) we block the save.
+    async function validateApiKey(): Promise<boolean | null> {
+      if (!trimmedApiKey) return true; // nothing to validate
+
+      const timeoutMs = 8000;
+      const controller = new AbortController();
+      const to = setTimeout(() => controller.abort(), timeoutMs);
+
+      try {
+        if (aiProvider === "openrouter") {
+          // OpenRouter exposes a models listing endpoint that accepts Bearer tokens
+          const res = await fetch("https://api.openrouter.ai/v1/models", {
+            method: "GET",
+            headers: { Authorization: `Bearer ${trimmedApiKey}` },
+            signal: controller.signal,
+          });
+          clearTimeout(to);
+          if (res.ok) return true;
+          if (res.status === 401 || res.status === 403) return false;
+          return null; // unknown (rate limit, CORS, etc.)
+        }
+
+        if (aiProvider === "custom") {
+          const base = trimmedBaseUrl.replace(/\/+$/, "");
+          // Try common OpenAI-compatible model list endpoint first
+          try {
+            const res = await fetch(`${base}/v1/models`, {
+              method: "GET",
+              headers: { Authorization: `Bearer ${trimmedApiKey}` },
+              signal: controller.signal,
+            });
+            clearTimeout(to);
+            if (res.ok) return true;
+            if (res.status === 401 || res.status === 403) return false;
+          } catch (e) {
+            // ignore and try chat completions fallback
+          }
+
+          // Fallback: try a minimal chat/completions request (may consume quota)
+          try {
+            const res2 = await fetch(`${base}/v1/chat/completions`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${trimmedApiKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ model: trimmedModel || "gpt-4o-mini", messages: [{ role: "user", content: "hi" }], max_tokens: 1 }),
+              signal: controller.signal,
+            });
+            clearTimeout(to);
+            if (res2.ok) return true;
+            if (res2.status === 401 || res2.status === 403) return false;
+            return null;
+          } catch (e) {
+            clearTimeout(to);
+            return null;
+          }
+        }
+
+        clearTimeout(to);
+        return null;
+      } catch (err) {
+        clearTimeout(to);
+        // Abort or network/CORS error — validation inconclusive
+        return null;
+      }
+    }
+
+    const validation = await validateApiKey();
+    if (validation === false) {
+      toast({
+        title: "Invalid API key",
+        description: "The API key was rejected by the provider (401/403). Please check and try again.",
+        variant: "destructive",
+      });
+      setSaving(false);
+      return;
+    }
+    if (validation === null && trimmedApiKey) {
+      toast({
+        title: "Key validation inconclusive",
+        description:
+          "Unable to verify the API key due to network/CORS or provider response. The key will still be saved, but if generation fails you may need to recheck the key or configure a server-side validation.",
+        variant: "warning",
+      });
+    }
 
     const { error } = await supabase
       .from("settings")
-      .update({
-        voice_reply_enabled: voiceReply,
-        emergency_notify: emergencyNotify,
-        auto_reply_text: autoReplyText,
-        ai_provider: aiProvider,
-        ai_provider_name: aiProvider === "custom" ? trimmedProviderName || null : "OpenRouter",
-        ai_api_key: trimmedApiKey || null,
-        ai_model: trimmedModel,
-        ai_base_url: aiProvider === "custom" ? trimmedBaseUrl || null : null,
-        gemini_api_key: null,
-      } as any)
-      .eq("user_id", user.id);
+      .upsert(
+        {
+          user_id: user.id,
+          voice_reply_enabled: voiceReply,
+          emergency_notify: emergencyNotify,
+          auto_reply_text: autoReplyText,
+          ai_provider: aiProvider,
+          ai_provider_name: aiProvider === "custom" ? trimmedProviderName || null : "OpenRouter",
+          ai_api_key: trimmedApiKey || null,
+          ai_model: trimmedModel || null,
+          ai_base_url: aiProvider === "custom" ? trimmedBaseUrl || null : null,
+          gemini_api_key: null,
+        } as any,
+        { onConflict: "user_id" }
+      );
 
     if (error) {
       toast({ title: "Error", description: "Failed to save settings", variant: "destructive" });
@@ -95,6 +204,9 @@ export default function SettingsPage() {
 
   const isCustomProvider = aiProvider === "custom";
   const providerLabel = isCustomProvider ? aiProviderName.trim() || "Custom provider" : "OpenRouter";
+  const providerReady = isCustomProvider
+    ? !!aiApiKey.trim() && !!aiModel.trim() && !!aiBaseUrl.trim()
+    : !!aiApiKey.trim() && !!aiModel.trim();
 
   return (
     <div className="animate-slide-up max-w-2xl">
@@ -230,9 +342,9 @@ export default function SettingsPage() {
           )}
 
           <div className="mt-3 flex items-center gap-1.5">
-            <div className={`h-2 w-2 rounded-full ${aiApiKey.trim() ? "bg-green-500 animate-pulse" : "bg-yellow-500"}`} />
-            <span className={`text-xs font-medium ${aiApiKey.trim() ? "text-green-500" : "text-yellow-500"}`}>
-              {aiApiKey.trim() ? `${providerLabel} configured` : "Using personalized fallback mode"}
+            <div className={`h-2 w-2 rounded-full ${providerReady ? "bg-green-500 animate-pulse" : "bg-yellow-500"}`} />
+            <span className={`text-xs font-medium ${providerReady ? "text-green-500" : "text-yellow-500"}`}>
+              {providerReady ? `Using ${providerLabel} with model ${aiModel.trim()}` : "Using personalized fallback mode"}
             </span>
           </div>
         </div>
