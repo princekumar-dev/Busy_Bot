@@ -1,183 +1,192 @@
-# 🤖 BusyBot — AI WhatsApp Auto-Reply Assistant
+# BusyBot AI Pal
 
-> Your personal AI that replies to WhatsApp messages **exactly like you** when you're busy. Not a robotic "I'm busy" template — real, human-like replies powered by Gemini AI with deep NLP.
+BusyBot is a full-stack WhatsApp auto-reply assistant that:
 
-**Live**: [busy-bot-eight.vercel.app](https://busy-bot-eight.vercel.app)
+- connects to WhatsApp through Evolution API,
+- stores conversations in Supabase Postgres,
+- learns your message style from your own outgoing chats,
+- generates context-aware replies with Gemini when Busy Mode is ON.
 
----
+This repository contains:
 
-## ✨ Features
+- React + Vite frontend dashboard,
+- Supabase database schema and RLS policies,
+- Supabase Edge Functions for webhook processing and personality training.
 
-### 🧠 Smart AI Replies
-- **Gemini 2.0 Flash** powered replies that sound like YOU, not a bot
-- Learns your **greeting style, slang, abbreviations, emojis, and phrases** from real messages
-- **Per-contact style learning** — knows you talk differently to Mom vs your best friend vs your boss
-- Matches the **language** of the sender — English, Hindi, Hinglish, Tanglish, Tamil, or any mix
+## What This Project Includes
 
-### 🔍 Deep NLP Engine
-- **Intent Classification**: greeting, question, request, follow-up, emotional, farewell, statement
-- **Sentiment Analysis**: happy, sad, angry, urgent, neutral
-- **Relationship Inference**: family, friend, close personal, professional, acquaintance
-- **Multi-language support**: English, Hindi, Tamil, Hinglish, Tanglish patterns built-in
-- **Smart skip**: Doesn't reply to "ok", "👍", "thanks", farewells — only when needed
-- **Duplicate prevention**: 3-minute cooldown per contact to avoid spam
+- Authentication with Supabase Auth (email/password)
+- Dashboard, Conversations, Personality Training, Analytics, Settings pages
+- Real-time UI updates using Supabase Realtime
+- Smart auto-reply pipeline with intent/sentiment/language detection
+- Fallback NLP replies when Gemini is unavailable
+- Evolution API QR onboarding and webhook registration
 
-### 📊 Real-Time Dashboard
-- Live message count, auto-reply stats, emergency alerts, response times
-- Week-over-week trends with percentage changes
-- Recent activity feed with realtime updates
+## High-Level Architecture
 
-### 📈 Analytics
-- 7-day message volume bar chart
-- Hourly activity heatmap
-- Urgency classification breakdown (normal / important / emergency)
+```text
+Frontend (Vercel / local)
+  React + Vite + Tailwind + shadcn/ui
+          |
+          | Supabase JS client (auth, db, realtime)
+          v
+Supabase (backend)
+  - Postgres (tables + RLS)
+  - Auth
+  - Edge Functions:
+      1) webhook
+      2) train-personality
+      3) debug (optional)
+          |
+          | outbound HTTP calls
+          v
+External services
+  - Evolution API (often hosted on Render)
+  - Google Gemini API
+```
 
-### 🎭 Personality Training
-- **One-click AI training** on your real WhatsApp messages
-- **Global style** extraction: greetings, affirmatives, emojis, tone, language patterns
-- **Per-contact analysis**: learns your unique style with each person
-- Manual overrides for tone, formality, emoji usage, and common phrases
+Detailed architecture: see docs/ARCHITECTURE.md.
 
-### 💬 Conversations
-- Real-time WhatsApp conversation viewer
-- Unread counts, urgency badges, search
-- See exactly what BusyBot sent on your behalf
+## Runtime Message Flow
 
-### ⚡ BusyMode Toggle
-- One switch to activate/deactivate auto-replies
-- Emergency message detection — skips auto-reply for urgent messages
-- Configurable fallback text when Gemini is unavailable
+1. A WhatsApp event reaches Evolution API.
+2. Evolution forwards the event to Supabase Edge Function webhook.
+3. webhook stores messages and updates conversation state.
+4. If the message is from the user (fromMe=true), it is treated as training data.
+5. If the message is incoming and Busy Mode is ON, webhook decides whether to auto-reply.
+6. webhook generates reply:
+   - Gemini-based personalized reply when gemini_api_key is available and valid.
+   - NLP contextual fallback reply otherwise.
+7. webhook sends the reply through Evolution API sendText endpoint.
+8. Reply is stored in messages table as bot + is_auto_reply=true.
+9. Frontend pages refresh live via Supabase Realtime channels.
 
----
+End-to-end flow doc: see docs/WORKING_FLOW.md.
 
-## 🏗️ Tech Stack
+## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| **Frontend** | React + TypeScript + Vite |
-| **UI** | Tailwind CSS + shadcn/ui |
-| **Backend** | Supabase (PostgreSQL + Edge Functions + Realtime) |
-| **WhatsApp** | Evolution API v2 |
-| **AI** | Google Gemini 2.0 Flash |
-| **Hosting** | Vercel (frontend) + Supabase (backend) + Render (Evolution API) |
+- Frontend: React 18, TypeScript, Vite, Tailwind CSS, shadcn/ui, TanStack Query, Recharts
+- Backend: Supabase (Postgres, Auth, Realtime, Edge Functions)
+- AI: Gemini 2.0 Flash
+- WhatsApp integration: Evolution API v2
+- Typical deployment: Vercel (frontend) + Supabase + Render (Evolution API)
 
----
+## Environment Variables
 
-## 🚀 Getting Started
+Create a .env file at the project root with:
 
-### Prerequisites
-- Node.js 18+
-- A [Supabase](https://supabase.com) project
-- An [Evolution API](https://github.com/EvolutionAPI/evolution-api) instance
-- A [Gemini API key](https://aistudio.google.com/apikey)
+```env
+VITE_SUPABASE_PROJECT_ID=your_project_ref
+VITE_SUPABASE_PUBLISHABLE_KEY=your_publishable_anon_key
+VITE_SUPABASE_URL=https://your_project_ref.supabase.co
+VITE_SITE_URL=http://localhost:8080
 
-### Setup
+VITE_EVO_API_URL=https://your-evolution-api-base-url/
+VITE_EVO_API_KEY=your_evolution_api_key
+VITE_EVO_BOT_NAME=busybot
+```
 
-```sh
-# Clone the repo
-git clone https://github.com/princekumar-dev/Busy_Bot.git
-cd Busy_Bot
+Important:
 
-# Install dependencies
+- The frontend reads VITE_SUPABASE_PUBLISHABLE_KEY, not VITE_SUPABASE_ANON_KEY.
+- Keep a trailing slash optional for VITE_EVO_API_URL (code normalizes it).
+- Do not commit production keys.
+
+## Supabase Edge Function Secrets
+
+Set these in Supabase project secrets for Edge Functions:
+
+- SUPABASE_URL
+- SUPABASE_SERVICE_ROLE_KEY
+- EVO_API_URL
+- EVO_API_KEY
+- EVO_BOT_NAME
+
+Functions also use each user's gemini_api_key stored in public.settings.
+
+## Local Development
+
+```bash
 npm install
-
-# Create .env file
-cp .env.example .env
-# Fill in your Supabase URL, Evolution API URL, API keys
-
-# Start dev server
 npm run dev
 ```
 
-### Environment Variables
+App runs on port 8080 by default.
 
-```env
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key
-VITE_EVO_API_URL=https://your-evo-instance.com/
-VITE_EVO_API_KEY=your-evolution-api-key
-VITE_EVO_BOT_NAME=your-instance-name
+Useful scripts:
+
+- npm run dev
+- npm run build
+- npm run preview
+- npm run lint
+- npm run test
+
+## Database and Migrations
+
+Schema is defined in:
+
+- supabase/migrations/20260221075115_f7711e93-d5d3-4c93-a9be-f4608c020cd8.sql
+- supabase/migrations/20260221120000_add_gemini_and_learning.sql
+
+Core tables:
+
+- profiles
+- personality_profiles
+- settings
+- conversations
+- messages
+
+RLS is enabled with owner-scoped policies on user data tables.
+
+## Deploying Supabase Functions
+
+verify_jwt is disabled for webhook and train-personality in supabase/config.toml.
+
+Deploy:
+
+```bash
+supabase functions deploy webhook --project-ref YOUR_PROJECT_REF
+supabase functions deploy train-personality --project-ref YOUR_PROJECT_REF
+supabase functions deploy debug --project-ref YOUR_PROJECT_REF
 ```
 
-### Deploy Edge Functions
+## Render + Supabase Setup (Evolution API Backend)
 
-```sh
-npx supabase functions deploy webhook --no-verify-jwt --project-ref YOUR_PROJECT_REF
-npx supabase functions deploy train-personality --no-verify-jwt --project-ref YOUR_PROJECT_REF
-```
+Typical production wiring:
 
----
+1. Deploy Evolution API on Render.
+2. Get its public base URL and API key.
+3. Put those values in:
+   - frontend .env (VITE_EVO_API_URL, VITE_EVO_API_KEY, VITE_EVO_BOT_NAME)
+   - Supabase Edge Function secrets (EVO_API_URL, EVO_API_KEY, EVO_BOT_NAME)
+4. In the app Settings page, use Evo QR Connector to connect WhatsApp and register webhook.
+5. Evolution starts forwarding events to:
+   https://YOUR_SUPABASE_PROJECT.supabase.co/functions/v1/webhook
 
-## 📁 Project Structure
+Full deployment checklist: see docs/DEPLOYMENT_RENDER_SUPABASE.md.
 
-```
-src/
-├── components/          # UI components
-│   ├── AppSidebar.tsx   # Navigation sidebar
-│   ├── BusyModeToggle.tsx # Main busy mode switch
-│   ├── EvoQRConnector.tsx # WhatsApp QR scanner + webhook setup
-│   └── ui/              # shadcn/ui components
-├── pages/
-│   ├── Dashboard.tsx    # Real-time stats dashboard
-│   ├── Analytics.tsx    # Charts & analytics
-│   ├── Conversations.tsx # WhatsApp message viewer
-│   ├── Personality.tsx  # AI personality training
-│   └── SettingsPage.tsx # App settings + Gemini key
-├── hooks/               # Custom React hooks
-├── integrations/        # Supabase client & types
-└── lib/                 # Utilities
+## Frontend Route Map
 
-supabase/
-├── functions/
-│   ├── webhook/         # Main message handler (NLP + Gemini + Evolution API)
-│   └── train-personality/ # Per-contact style ML analysis
-└── migrations/          # Database schema
-```
+- / -> marketing/landing page
+- /auth -> login/signup
+- /dashboard -> protected dashboard
+- /conversations -> protected chat viewer
+- /personality -> protected AI training page
+- /analytics -> protected metrics page
+- /settings -> protected settings page
 
----
+## Notes for Contributors
 
-## 🧠 How the AI Works
+- Keep database changes in new SQL migrations.
+- Keep docs aligned when env variables or function contracts change.
+- When modifying webhook logic, update docs/WORKING_FLOW.md.
 
-```
-Incoming WhatsApp Message
-        │
-        ▼
-┌─────────────────────┐
-│  Intent Classifier   │  → greeting / question / request / emotional / follow-up
-│  Sentiment Analyzer  │  → happy / sad / angry / urgent / neutral
-│  Relationship Infer  │  → family / friend / professional / acquaintance
-└─────────────────────┘
-        │
-        ▼
-┌─────────────────────┐
-│  Cooldown Check      │  → Skip if replied to this person in last 3 min
-│  needsReply Check    │  → Skip "ok", "👍", farewells
-│  Emergency Check     │  → Skip if urgent + notifications enabled
-└─────────────────────┘
-        │
-        ▼
-┌─────────────────────┐
-│  Gemini 2.0 Flash    │
-│  ┌─────────────────┐ │
-│  │ Global Style     │ │  ← learned greetings, slang, emojis, tone
-│  │ Per-Contact Style│ │  ← how you talk to THIS specific person
-│  │ Conversation Hx  │ │  ← last 20 messages for context
-│  │ Intent + Sentiment│ │ ← what they want + how they feel
-│  │ Relationship     │ │  ← warm for family, casual for friends
-│  └─────────────────┘ │
-└─────────────────────┘
-        │
-        ▼
-   Human-like Reply
-   sent via Evolution API
-```
+## Documentation Index
 
----
+- docs/ARCHITECTURE.md
+- docs/WORKING_FLOW.md
+- docs/DEPLOYMENT_RENDER_SUPABASE.md
 
-## 📝 License
+## License
 
 MIT
-
----
-
-Built with ❤️ by [Prince Kumar](https://github.com/princekumar-dev)

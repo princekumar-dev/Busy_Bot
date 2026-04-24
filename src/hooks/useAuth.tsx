@@ -1,14 +1,27 @@
 import { useState, useEffect, createContext, useContext, ReactNode } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
-import { useNavigate } from "react-router-dom";
+
+type SignUpStatus =
+  | "confirmation_sent"
+  | "already_registered"
+  | "signed_in"
+  | "unknown";
+
+type AuthResult = {
+  error: Error | null;
+};
+
+type SignUpResult = AuthResult & {
+  status: SignUpStatus;
+};
 
 interface AuthContextType {
   session: Session | null;
   user: User | null;
   loading: boolean;
-  signUp: (email: string, password: string, displayName?: string) => Promise<{ error: Error | null }>;
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, displayName?: string) => Promise<SignUpResult>;
+  signIn: (email: string, password: string) => Promise<AuthResult>;
   signOut: () => Promise<void>;
 }
 
@@ -36,15 +49,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signUp = async (email: string, password: string, displayName?: string) => {
-    const { error } = await supabase.auth.signUp({
+    const siteUrl = (import.meta.env.VITE_SITE_URL || window.location.origin).trim();
+    const emailRedirectTo = new URL("/dashboard", siteUrl).toString();
+
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo: import.meta.env.VITE_SITE_URL || window.location.origin,
+        emailRedirectTo,
         data: { display_name: displayName },
       },
     });
-    return { error: error as Error | null };
+
+    if (error) {
+      return { error: error as Error, status: "unknown" };
+    }
+
+    if (data.session) {
+      return { error: null, status: "signed_in" };
+    }
+
+    if ((data.user?.identities ?? []).length === 0) {
+      return { error: null, status: "already_registered" };
+    }
+
+    if (data.user?.confirmation_sent_at) {
+      return { error: null, status: "confirmation_sent" };
+    }
+
+    return { error: null, status: "unknown" };
   };
 
   const signIn = async (email: string, password: string) => {

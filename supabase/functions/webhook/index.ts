@@ -139,12 +139,251 @@ function inferRelationship(
    3. SMART REPLY GENERATOR (enhanced with NLP context)
    ────────────────────────────────────────────────────────── */
 
+function normalizeStyleList(values: any): string[] {
+  if (!Array.isArray(values)) return [];
+
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const cleaned = value.replace(/\s+/g, " ").trim();
+    if (!cleaned) continue;
+
+    const key = cleaned.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(cleaned);
+  }
+
+  return result;
+}
+
+function sanitizeStyleExample(value: any, maxLength: number = 120): string {
+  if (typeof value !== "string") return "";
+  const cleaned = value.replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+  return cleaned.length > maxLength ? `${cleaned.slice(0, maxLength).trim()}...` : cleaned;
+}
+
+function extractStyleLead(value: any): string {
+  const cleaned = sanitizeStyleExample(value, 60);
+  if (!cleaned) return "";
+
+  const firstSentence = cleaned.split(/[.!?]/)[0].trim();
+  const words = firstSentence.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "";
+
+  return words.slice(0, Math.min(words.length, 4)).join(" ");
+}
+
+function getPerContactStyle(contactName: string | null, learnedStyle: any) {
+  const contactKey = contactName?.toLowerCase().replace(/\s+/g, "_") || "unknown";
+  let perContact = learnedStyle?.per_contact?.[contactKey];
+
+  if (!perContact && contactName && learnedStyle?.per_contact) {
+    const nameLower = contactName.toLowerCase();
+    for (const [key, val] of Object.entries(learnedStyle.per_contact)) {
+      const style = val as any;
+      const styleContactName = typeof style?.contact_name === "string" ? style.contact_name.toLowerCase() : "";
+      if (key.includes(nameLower) || nameLower.includes(key) || styleContactName.includes(nameLower)) {
+        perContact = style;
+        break;
+      }
+    }
+  }
+
+  return perContact || null;
+}
+
+function extractRecentUserExamples(conversationHistory: any[], limit: number = 5): string[] {
+  const examples = conversationHistory
+    .filter((m) => m.sender === "user")
+    .map((m) => sanitizeStyleExample(m.content))
+    .filter(Boolean);
+
+  return examples.slice(-limit);
+}
+
+function extractRecentReplyPairs(
+  conversationHistory: any[],
+  contactName: string | null,
+  limit: number = 4
+): string[] {
+  const pairs: string[] = [];
+  const contactLabel = contactName || "Contact";
+
+  for (let i = 0; i < conversationHistory.length - 1; i++) {
+    const current = conversationHistory[i];
+    if (current?.sender !== "contact") continue;
+
+    const incoming = sanitizeStyleExample(current.content, 80);
+    if (!incoming) continue;
+
+    for (let j = i + 1; j < Math.min(conversationHistory.length, i + 4); j++) {
+      const next = conversationHistory[j];
+      if (next?.sender === "contact") break;
+      if (next?.sender !== "user") continue;
+
+      const reply = sanitizeStyleExample(next.content, 80);
+      if (!reply) continue;
+
+      pairs.push(`${contactLabel}: ${incoming}\nYou: ${reply}`);
+      break;
+    }
+  }
+
+  return pairs.slice(-limit);
+}
+
+function buildPersonalizedFallbackReply(
+  incomingMessage: string,
+  contactName: string | null,
+  personality: any,
+  conversationHistory: any[],
+  intentData: { intent: string; sentiment: string; detectedLanguage: string },
+  relationship: string,
+  staticFallback: string
+): string {
+  const learnedStyle = personality?.learned_style || {};
+  const perContact = getPerContactStyle(contactName, learnedStyle);
+  const greetings = normalizeStyleList(learnedStyle.greetings);
+  const affirmatives = normalizeStyleList(learnedStyle.affirmatives);
+  const closings = normalizeStyleList(learnedStyle.closings);
+  const signatures = normalizeStyleList(learnedStyle.signature_phrases);
+  const favoriteEmojis = normalizeStyleList(learnedStyle.emoji_favorites);
+  const sampleReplies = normalizeStyleList(perContact?.sample_replies);
+  const recentUserExamples = extractRecentUserExamples(conversationHistory, 4);
+
+  const styleLead = [
+    ...greetings,
+    ...affirmatives,
+    ...signatures.map((value) => extractStyleLead(value)),
+    ...sampleReplies.map((value) => extractStyleLead(value)),
+    ...recentUserExamples.map((value) => extractStyleLead(value)),
+  ].find(Boolean) || "";
+
+  const nickname = contactName ? contactName.split(" ")[0] : "";
+  const namePrefix = nickname ? `${nickname}, ` : "";
+  const primaryLanguage = `${perContact?.language || learnedStyle.primary_language || intentData.detectedLanguage || ""}`.toLowerCase();
+  const isTamilStyle = primaryLanguage.includes("tamil") || primaryLanguage.includes("tanglish");
+  const isHindiStyle = primaryLanguage.includes("hindi") || primaryLanguage.includes("hinglish");
+  const emoji = favoriteEmojis[0] ? ` ${favoriteEmojis[0]}` : "";
+  const shortTopic = incomingMessage.trim().split(/\s+/).slice(0, 6).join(" ");
+
+  const busyPhrase = isTamilStyle
+    ? "konjam busy ah irukken, aprom proper ah reply pannuren"
+    : isHindiStyle
+      ? "thoda busy hu, thodi der mein properly reply karta hu"
+      : "I'm tied up right now, will reply properly in a bit";
+
+  const reassurePhrase = isTamilStyle
+    ? "ignore pannala"
+    : isHindiStyle
+      ? "ignore nahi kar raha"
+      : "not ignoring you";
+
+  const empathyPhrase = isTamilStyle
+    ? relationship === "family" || relationship === "close_personal"
+      ? "paathuten, serious ah eduthukaren"
+      : "paathuten"
+    : isHindiStyle
+      ? relationship === "family" || relationship === "close_personal"
+        ? "dekh liya, seriously le raha hu"
+        : "dekh liya"
+      : relationship === "family" || relationship === "close_personal"
+        ? "I saw this and I'm taking it seriously"
+        : "I saw your message";
+
+  let coreReply = "";
+
+  if (intentData.intent === "question") {
+    coreReply = isTamilStyle
+      ? `${namePrefix}"${shortTopic}" pathi paathuten, ${busyPhrase}`
+      : isHindiStyle
+        ? `${namePrefix}"${shortTopic}" dekh liya, ${busyPhrase}`
+        : `${namePrefix}saw your question about "${shortTopic}", ${busyPhrase}`;
+  } else if (intentData.intent === "request") {
+    coreReply = isTamilStyle
+      ? `${namePrefix}seri, ${busyPhrase}`
+      : isHindiStyle
+        ? `${namePrefix}haan, ${busyPhrase}`
+        : `${namePrefix}got it, ${busyPhrase}`;
+  } else if (intentData.intent === "follow_up") {
+    coreReply = `${namePrefix}${reassurePhrase}, ${busyPhrase}`;
+  } else if (intentData.intent === "emotional" || intentData.sentiment === "sad" || intentData.sentiment === "angry") {
+    coreReply = `${namePrefix}${empathyPhrase}. ${busyPhrase}`;
+  } else if (intentData.sentiment === "urgent") {
+    coreReply = isTamilStyle
+      ? `${namePrefix}idhu important nu purinjidhu, ${busyPhrase}`
+      : isHindiStyle
+        ? `${namePrefix}yeh important lag raha hai, ${busyPhrase}`
+        : `${namePrefix}this sounds important, ${busyPhrase}`;
+  } else {
+    coreReply = `${namePrefix}${busyPhrase}`;
+  }
+
+  const closing = closings[0] && !coreReply.toLowerCase().includes(closings[0].toLowerCase())
+    ? ` ${closings[0]}`
+    : "";
+
+  const stitched = `${styleLead ? `${styleLead}${/[.!?]$/.test(styleLead) ? "" : "..."} ` : ""}${coreReply}${emoji}${closing}`
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return stitched || staticFallback;
+}
+
+function buildAIConfig(settings: any) {
+  const provider = `${settings?.ai_provider || "openrouter"}`.trim().toLowerCase();
+  const apiKey = typeof settings?.ai_api_key === "string" ? settings.ai_api_key.trim() : "";
+  const model = typeof settings?.ai_model === "string" && settings.ai_model.trim()
+    ? settings.ai_model.trim()
+    : "google/gemma-4-31b-it:free";
+  const baseUrl = typeof settings?.ai_base_url === "string" ? settings.ai_base_url.trim() : "";
+  const providerName = typeof settings?.ai_provider_name === "string" ? settings.ai_provider_name.trim() : "";
+
+  if (!apiKey) return null;
+
+  if (provider === "custom") {
+    const normalizedBase = baseUrl.replace(/\/$/, "");
+    if (!normalizedBase) return null;
+    const endpoint = normalizedBase.endsWith("/chat/completions")
+      ? normalizedBase
+      : `${normalizedBase}/chat/completions`;
+
+    return {
+      provider: "custom",
+      providerName: providerName || "Custom",
+      model,
+      endpoint,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+    };
+  }
+
+  return {
+    provider: "openrouter",
+    providerName: "OpenRouter",
+    model,
+    endpoint: "https://openrouter.ai/api/v1/chat/completions",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": Deno.env.get("VITE_SITE_URL") || Deno.env.get("SITE_URL") || SUPABASE_URL,
+      "X-OpenRouter-Title": "BusyBot",
+    },
+  };
+}
+
 async function generateSmartReply(
   incomingMessage: string,
   contactName: string | null,
   personality: any,
   conversationHistory: any[],
-  geminiKey: string,
+  aiConfig: any,
   fallbackText: string,
   intentData: { intent: string; sentiment: string; detectedLanguage: string },
   relationship: string
@@ -165,6 +404,8 @@ async function generateSmartReply(
   const commonPhrases = (personality?.common_phrases || []).join(", ");
   const formality = personality?.formality_score || 0.5;
   const learnedStyle = personality?.learned_style || {};
+  const recentUserExamples = extractRecentUserExamples(conversationHistory, 5);
+  const recentReplyPairs = extractRecentReplyPairs(conversationHistory, contactName, 4);
 
   // Build rich context from ML-learned patterns
   let learnedContext = "";
@@ -194,21 +435,12 @@ async function generateSmartReply(
     learnedContext += `\n- Your primary language: ${learnedStyle.primary_language}`;
   if (learnedStyle.code_switching_pattern)
     learnedContext += `\n- Code-switching habit: ${learnedStyle.code_switching_pattern}`;
+  if (recentUserExamples.length)
+    learnedContext += `\n- Recent real replies from you: ${recentUserExamples.map((value) => `"${value}"`).join(", ")}`;
 
-  // Per-contact learned patterns (fuzzy key matching)
-  const contactKey = contactName?.toLowerCase().replace(/\s+/g, "_") || "unknown";
-  let perContact = learnedStyle.per_contact?.[contactKey];
+  // Per-contact learned patterns
+  const perContact = getPerContactStyle(contactName, learnedStyle);
   // Fuzzy match — try partial name match if exact key doesn't work
-  if (!perContact && contactName && learnedStyle.per_contact) {
-    const nameLower = contactName.toLowerCase();
-    for (const [key, val] of Object.entries(learnedStyle.per_contact)) {
-      if (key.includes(nameLower) || nameLower.includes(key) ||
-          (val as any).contact_name?.toLowerCase().includes(nameLower)) {
-        perContact = val;
-        break;
-      }
-    }
-  }
   let perContactContext = "";
   if (perContact) {
     perContactContext = `\n\nHOW YOU SPECIFICALLY TALK TO ${contactName || "this person"}:`;
@@ -217,6 +449,11 @@ async function generateSmartReply(
       perContactContext += `\n- Example replies to them: "${perContact.sample_replies.join('", "')}"`;
     if (perContact.language) perContactContext += `\n- Language with them: ${perContact.language}`;
     if (perContact.emoji_usage) perContactContext += `\n- Emoji usage with them: ${perContact.emoji_usage}`;
+    if (perContact.relationship_hint) perContactContext += `\n- Relationship hint: ${perContact.relationship_hint}`;
+    if (perContact.unique_patterns) perContactContext += `\n- Unique patterns with them: ${perContact.unique_patterns}`;
+  }
+  if (recentReplyPairs.length) {
+    perContactContext += `\n- Recent contact -> your reply pairs:\n${recentReplyPairs.join("\n---\n")}`;
   }
 
   // Relationship context
@@ -286,6 +523,8 @@ CRITICAL RULES:
 9. If they ask a specific question, briefly reference what they asked (don't ignore it).
 10. If they're following up, reassure them — you're busy, not ignoring them.
 11. Look at the conversation history to understand CONTEXT of what's being discussed.
+12. This is a PERSONAL ASSISTANT workflow, not a generic busy template.
+13. Reuse the user's natural phrasing patterns and per-contact style whenever it fits.
 
 CONVERSATION HISTORY WITH ${contactName || "this contact"}:
 ${historyStr}
@@ -294,22 +533,14 @@ THEIR NEW MESSAGE: "${incomingMessage}"
 
 Reply as this person would — natural, short, human, context-aware:`;
 
-  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`;
+  const providerUrl = aiConfig.endpoint;
   const requestBody = JSON.stringify({
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: {
-      temperature: 0.9,
-      maxOutputTokens: 256,
-      topP: 0.95,
-      topK: 40,
-    },
+    model: aiConfig.model,
+    messages: [{ role: "user", content: prompt }],
+    stream: false,
+    temperature: 0.9,
+    max_tokens: 256,
     // Use BLOCK_ONLY_HIGH — free-tier keys do NOT support BLOCK_NONE (returns 400)
-    safetySettings: [
-      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
-      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
-      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
-      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" },
-    ],
   });
 
   // Retry helper — try up to 2 times on transient errors (429, 503)
@@ -317,30 +548,30 @@ Reply as this person would — natural, short, human, context-aware:`;
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
+      const timeout = setTimeout(() => controller.abort(), 15000);
 
-      const res = await fetch(geminiUrl, {
+      const res = await fetch(providerUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: aiConfig.headers,
         signal: controller.signal,
         body: requestBody,
       });
 
       clearTimeout(timeout);
 
-      if (res.status === 429 || res.status === 503) {
+      if (res.status === 429 || res.status >= 500) {
         console.warn(`Gemini ${res.status} on attempt ${attempt}/${MAX_RETRIES} — retrying...`);
         if (attempt < MAX_RETRIES) {
           await new Promise(r => setTimeout(r, attempt * 2000)); // 2s, 4s
           continue;
         }
-        console.error(`Gemini still ${res.status} after ${MAX_RETRIES} attempts`);
+        console.error(`${aiConfig.providerName} still ${res.status} after ${MAX_RETRIES} attempts`);
         return fallbackText;
       }
 
       if (!res.ok) {
         const errBody = await res.text();
-        console.error(`Gemini API error ${res.status}:`, errBody.substring(0, 500));
+        console.error(`${aiConfig.providerName} API error ${res.status}:`, errBody.substring(0, 500));
 
         // If 400 with "API_KEY_INVALID" or similar, don't retry
         if (res.status === 400) {
@@ -354,34 +585,16 @@ Reply as this person would — natural, short, human, context-aware:`;
       }
 
       const result = await res.json();
-      console.log("Gemini raw response keys:", Object.keys(result));
+      console.log(`${aiConfig.providerName} raw response keys:`, Object.keys(result));
 
-      // Check if blocked by safety filter
-      if (result.promptFeedback?.blockReason) {
-        console.warn("Gemini blocked by safety filter:", result.promptFeedback.blockReason);
-        return fallbackText;
-      }
-
-      const candidate = result.candidates?.[0];
-      if (!candidate) {
-        console.error("Gemini returned no candidates:", JSON.stringify(result).substring(0, 300));
-        return fallbackText;
-      }
-
-      // Check finish reason
-      if (candidate.finishReason === "SAFETY") {
-        console.warn("Gemini candidate blocked by safety:", candidate.safetyRatings);
-        return fallbackText;
-      }
-
-      const reply = candidate.content?.parts?.[0]?.text?.trim();
+      const reply = result?.choices?.[0]?.message?.content?.trim();
 
       if (!reply) {
-        console.error("Gemini returned empty text. Candidate:", JSON.stringify(candidate).substring(0, 300));
+        console.error(`${aiConfig.providerName} returned empty text:`, JSON.stringify(result).substring(0, 300));
         return fallbackText;
       }
 
-      console.log(`Gemini reply (attempt ${attempt}): "${reply.substring(0, 100)}"`);
+      console.log(`${aiConfig.providerName} reply (attempt ${attempt}): "${reply.substring(0, 100)}"`);
 
       // Clean up — remove surrounding quotes / backticks Gemini sometimes adds
       return reply.replace(/^["'`]+|["'`]+$/g, "").trim();
@@ -389,9 +602,9 @@ Reply as this person would — natural, short, human, context-aware:`;
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       if (errMsg.includes("abort") || errMsg.includes("AbortError")) {
-        console.error(`Gemini timed out on attempt ${attempt}/${MAX_RETRIES}`);
+        console.error(`${aiConfig.providerName} timed out on attempt ${attempt}/${MAX_RETRIES}`);
       } else {
-        console.error(`Gemini call failed on attempt ${attempt}/${MAX_RETRIES}:`, errMsg);
+        console.error(`${aiConfig.providerName} call failed on attempt ${attempt}/${MAX_RETRIES}:`, errMsg);
       }
 
       if (attempt < MAX_RETRIES) {
@@ -524,7 +737,7 @@ serve(async (req) => {
     // ─── Fetch all users with settings ───
     const { data: allSettings, error: settingsError } = await supabase
       .from("settings")
-      .select("user_id, busy_mode, auto_reply_text, emergency_notify, gemini_api_key")
+      .select("user_id, busy_mode, auto_reply_text, emergency_notify, ai_provider, ai_api_key, ai_model, ai_base_url, ai_provider_name")
       .order("updated_at", { ascending: false });
 
     if (settingsError || !allSettings || allSettings.length === 0) {
@@ -621,7 +834,7 @@ serve(async (req) => {
               .eq("user_id", userId)
               .single();
 
-            if (userSettings?.gemini_api_key) {
+            if (userSettings?.gemini_api_key || newMsgsSinceTraining >= 50) {
               console.log(`Auto-retrain triggered for ${userId}: ${newMsgsSinceTraining} new msgs`);
               // Fire and forget — don't await
               fetch(`${SUPABASE_URL}/functions/v1/train-personality`, {
@@ -698,46 +911,58 @@ serve(async (req) => {
 
       // ─── Generate smart reply ───
       let replyText: string;
-      let geminiUsed = false;
-      let geminiError: string | null = null;
+      let providerUsed = false;
+      let providerError: string | null = null;
 
       // Access gemini_api_key — the column might not exist if DB migration wasn't run
-      const rawGeminiKey = (settings as any).gemini_api_key;
-      const geminiKey = (typeof rawGeminiKey === "string" ? rawGeminiKey : "").trim();
+      const aiConfig = buildAIConfig(settings);
       
-      console.log(`[${userId}] Gemini key check: raw=${typeof rawGeminiKey}, length=${geminiKey.length}, valid=${geminiKey.length > 10}`);
+      console.log(`[${userId}] AI provider check: provider=${aiConfig?.provider || "none"}, model=${aiConfig?.model || "none"}, configured=${!!aiConfig}`);
 
       // The static fallback from settings — used as absolute last resort
       const staticFallback = settings.auto_reply_text || "Hey, caught up with something rn. Will text you back soon!";
 
-      if (geminiKey && geminiKey.length > 10) {
-        console.log(`[${userId}] Using Gemini for smart reply (key: ${geminiKey.substring(0, 8)}...)`);
-        const geminiResult = await generateSmartReply(
+      if (aiConfig) {
+        console.log(`[${userId}] Using ${aiConfig.providerName} for smart reply`);
+        const providerResult = await generateSmartReply(
           text,
           contactName,
           personality,
-          (recentMessages || []).reverse(),
-          geminiKey,
-          "__GEMINI_FAILED__", // Use sentinel value so we can detect Gemini failure vs success
+          (recentMessages || []).slice().reverse(),
+          aiConfig,
+          "__PROVIDER_FAILED__",
           intentData,
           relationship
         );
         
-        if (geminiResult !== "__GEMINI_FAILED__") {
+        if (providerResult !== "__PROVIDER_FAILED__") {
           // Gemini succeeded!
-          geminiUsed = true;
-          replyText = geminiResult;
+          providerUsed = true;
+          replyText = providerResult;
           console.log(`[${userId}] ✅ Gemini reply: "${replyText.substring(0, 80)}"`);
         } else {
           // Gemini failed — fall through to NLP-based contextual replies
-          geminiError = "Gemini API call failed (check API key in Settings)";
+          providerError = `${aiConfig.providerName} API call failed`;
           console.warn(`[${userId}] ❌ Gemini failed — falling back to NLP-based reply`);
           replyText = ""; // Will be set below
         }
       }
 
       // NLP-based contextual replies — used when Gemini is unavailable or fails
-      if (!geminiUsed) {
+      if (!providerUsed) {
+        console.log(`[${userId}] Building personalized fallback from learned user style`);
+        replyText = buildPersonalizedFallbackReply(
+          text,
+          contactName,
+          personality,
+          (recentMessages || []).slice().reverse(),
+          intentData,
+          relationship,
+          staticFallback
+        );
+      }
+
+      if (!providerUsed && !replyText) {
         console.log(`[${userId}] Using NLP-based contextual fallback (intent: ${intentData.intent}, sentiment: ${intentData.sentiment})`);
 
         // Build context-aware replies based on intent + sentiment + relationship
@@ -837,14 +1062,14 @@ serve(async (req) => {
             intent: intentData.intent,
             sentiment: intentData.sentiment,
             relationship,
-            gemini_used: geminiUsed,
-            gemini_error: geminiError,
+            provider_used: providerUsed,
+            provider_error: providerError,
             reply: replyText.substring(0, 80),
           });
         } else {
           const errText = await sendRes.text();
           console.error("Send failed:", sendRes.status, errText);
-          results.push({ user_id: userId, action: "send_failed", gemini_used: geminiUsed, reply_preview: replyText.substring(0, 80), error: errText.substring(0, 100) });
+          results.push({ user_id: userId, action: "send_failed", provider_used: providerUsed, reply_preview: replyText.substring(0, 80), error: errText.substring(0, 100) });
         }
       } catch (sendErr) {
         console.error("Send error:", sendErr);

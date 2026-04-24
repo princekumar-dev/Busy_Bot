@@ -1,5 +1,5 @@
 // deno-lint-ignore-file
-// @ts-nocheck — Runs on Supabase Edge Functions (Deno runtime)
+// @ts-nocheck - Runs on Supabase Edge Functions (Deno runtime)
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -15,109 +15,341 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-/* ──────────────────────────────────────────────────────────
-   Helper: Call Gemini with a prompt and parse JSON response
-   ────────────────────────────────────────────────────────── */
+function normalizeText(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
 
-async function callGeminiJSON(prompt: string, geminiKey: string, retries: number = 2): Promise<any> {
+function uniqueStrings(values: string[], limit?: number): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const value of values) {
+    const cleaned = normalizeText(value);
+    if (!cleaned) continue;
+    const key = cleaned.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(cleaned);
+    if (limit && result.length >= limit) break;
+  }
+
+  return result;
+}
+
+function countWords(text: string): number {
+  return normalizeText(text).split(/\s+/).filter(Boolean).length;
+}
+
+function detectLanguageStyle(text: string): string {
+  const t = text.toLowerCase();
+  const tamilChars = /[\u0B80-\u0BFF]/;
+  const hindiChars = /[\u0900-\u097F]/;
+  const tamilRomanWords = /\b(da|di|dei|machi|machan|nanba|enna|enga|eppo|epdi|sollu|seri|romba|illa|iruku|konjam|vaanga|nandri)\b/g;
+  const hindiRomanWords = /\b(kya|kab|kaise|kahan|bhai|yaar|acha|theek|haan|nahi|batao|bhejo|dekho|arey|chalo|abhi|jaldi|matlab)\b/g;
+
+  if (tamilChars.test(t)) return "tamil";
+  if (hindiChars.test(t)) return "hindi";
+
+  const tamilHits = (t.match(tamilRomanWords) || []).length;
+  const hindiHits = (t.match(hindiRomanWords) || []).length;
+
+  if (tamilHits > 0 && hindiHits > 0) return "mixed";
+  if (tamilHits >= 2) return "tanglish";
+  if (hindiHits >= 2) return "hinglish";
+  if (tamilHits === 1) return "tanglish_light";
+  if (hindiHits === 1) return "hinglish_light";
+  return "english";
+}
+
+function topMatches(messages: string[], pattern: RegExp, limit: number = 5): string[] {
+  const matches: string[] = [];
+
+  for (const message of messages) {
+    const found = message.match(pattern);
+    if (!found) continue;
+    matches.push(...found.map((value) => normalizeText(value)));
+  }
+
+  return uniqueStrings(matches, limit);
+}
+
+function summarizeTone(messages: string[]): string {
+  const joined = messages.join(" ").toLowerCase();
+  const formalHits = (joined.match(/\b(please|kindly|regards|thank you|sir|ma'am|noted|will do)\b/g) || []).length;
+  const playfulHits = (joined.match(/\b(lol|haha|hehe|bro|yaar|da|dei|machi|semma|mass)\b/g) || []).length;
+  const warmHits = (joined.match(/\b(miss|love|take care|jaan|chellam|kutty|sorry|thanks)\b/g) || []).length;
+
+  if (formalHits > playfulHits + warmHits) return "polite and fairly formal";
+  if (warmHits > formalHits && warmHits >= playfulHits) return "warm, caring, and personal";
+  if (playfulHits > formalHits) return "casual, playful, and chatty";
+  return "casual and direct";
+}
+
+function describeLanguageMix(languageCounts: Record<string, number>) {
+  const entries = Object.entries(languageCounts).filter(([, count]) => count > 0);
+  if (entries.length === 0) {
+    return {
+      detected: ["english"],
+      primary: "english",
+      mix: "Mostly English",
+      codeSwitching: "Mostly single-language messages",
+    };
+  }
+
+  entries.sort((a, b) => b[1] - a[1]);
+  const detected = entries.map(([language]) => language);
+  const primary = entries[0][0];
+  const mixedCount = (languageCounts.mixed || 0) + (languageCounts.tanglish || 0) + (languageCounts.hinglish || 0);
+
+  let mix = `Mostly ${primary}`;
+  if (mixedCount > 0) {
+    mix = `${primary} with regular code-switching`;
+  } else if (entries.length > 1) {
+    mix = `Mostly ${primary} with some ${entries[1][0]}`;
+  }
+
+  const codeSwitching = mixedCount > 0
+    ? "Frequently switches between languages in the same conversation"
+    : entries.length > 1
+      ? "Mostly changes language between messages depending on the contact"
+      : "Mostly single-language messages";
+
+  return { detected, primary, mix, codeSwitching };
+}
+
+function buildHeuristicGlobalStyle(userMessages: Array<{ content: string }>) {
+  const texts = userMessages.map((message) => normalizeText(message.content)).filter(Boolean);
+  const joined = texts.join(" ");
+  const avgWordCount = texts.length > 0
+    ? Math.max(1, Math.round(texts.reduce((sum, text) => sum + countWords(text), 0) / texts.length))
+    : 8;
+
+  const emojiRegex = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu;
+  const emojiCounts: Record<string, number> = {};
+  for (const emoji of joined.match(emojiRegex) || []) {
+    emojiCounts[emoji] = (emojiCounts[emoji] || 0) + 1;
+  }
+
+  const languageCounts: Record<string, number> = {};
+  for (const text of texts) {
+    const language = detectLanguageStyle(text);
+    languageCounts[language] = (languageCounts[language] || 0) + 1;
+  }
+  const languageSummary = describeLanguageMix(languageCounts);
+
+  const shortReplies = texts.filter((text) => countWords(text) <= 8);
+  const shortReplyCounts: Record<string, number> = {};
+  for (const text of shortReplies) {
+    const key = text.toLowerCase();
+    shortReplyCounts[key] = (shortReplyCounts[key] || 0) + 1;
+  }
+
+  const signaturePhrases = uniqueStrings(
+    Object.entries(shortReplyCounts)
+      .filter(([, count]) => count >= 2)
+      .sort((a, b) => b[1] - a[1])
+      .map(([text]) => text),
+    6
+  );
+
+  const abbreviationPatterns = [];
+  if (/\bu\b/i.test(joined)) abbreviationPatterns.push('"u" for "you"');
+  if (/\burn\b/i.test(joined)) abbreviationPatterns.push('"rn" for "right now"');
+  if (/\bmsg\b/i.test(joined)) abbreviationPatterns.push('"msg" for "message"');
+  if (/\bpls\b|\bplz\b/i.test(joined)) abbreviationPatterns.push('"pls/plz" for "please"');
+  if (/\bthx\b|\bty\b/i.test(joined)) abbreviationPatterns.push('short thank-you forms');
+
+  return {
+    greetings: topMatches(texts, /\b(hi|hey+|hello|yo|oyee?|vanakkam|namaste|gm|gn|bro|bhai|machi|da|dei)\b/gi),
+    affirmatives: topMatches(texts, /\b(haan|ha|yes|yep|yeah|sure|okay|ok|seri|serida|theek|done|cool)\b/gi),
+    negatives: topMatches(texts, /\b(no|nah|nahi|illa|vendam|can't|cannot|later)\b/gi),
+    fillers: topMatches(texts, /\b(like|yaar|bro|da|dei|actually|basically|matlab|acha|seri)\b/gi),
+    closings: topMatches(texts, /\b(bye|tc|take care|good night|gn|ttyl|later|seri da|poi varen|see you)\b/gi),
+    emoji_favorites: Object.entries(emojiCounts).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([emoji]) => emoji),
+    avg_word_count: avgWordCount,
+    detected_languages: languageSummary.detected,
+    primary_language: languageSummary.primary,
+    language_mix: languageSummary.mix,
+    tone_summary: summarizeTone(texts),
+    signature_phrases: signaturePhrases,
+    abbreviation_style: abbreviationPatterns.join(", "),
+    code_switching_pattern: languageSummary.codeSwitching,
+    analysis_mode: "heuristic",
+  };
+}
+
+function inferHeuristicRelationship(contactName: string, messages: string[]): string {
+  const name = (contactName || "").toLowerCase();
+  if (/\b(mom|mum|amma|dad|appa|bro|sis|anna|akka|thambi|family)\b/i.test(name)) return "family";
+  if (/\b(sir|madam|boss|manager|prof|teacher|doctor)\b/i.test(name)) return "professional";
+
+  const joined = messages.join(" ").toLowerCase();
+  const affectionate = (joined.match(/\b(love|miss|jaan|chellam|kutty|take care)\b/g) || []).length;
+  const formal = (joined.match(/\b(please|kindly|sir|ma'am|regards|noted)\b/g) || []).length;
+  const casual = (joined.match(/\b(bro|yaar|da|dei|lol|haha|machi|scene)\b/g) || []).length;
+
+  if (affectionate >= 2) return "close friend";
+  if (formal > casual) return "colleague";
+  if (casual >= 2) return "friend";
+  return "acquaintance";
+}
+
+function buildHeuristicContactStyle(contactName: string, messages: string[]) {
+  const cleaned = messages.map((message) => normalizeText(message)).filter(Boolean);
+  const joined = cleaned.join(" ");
+  const emojiCount = (joined.match(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu) || []).length;
+
+  const languageCounts: Record<string, number> = {};
+  for (const message of cleaned) {
+    const language = detectLanguageStyle(message);
+    languageCounts[language] = (languageCounts[language] || 0) + 1;
+  }
+  const languageSummary = describeLanguageMix(languageCounts);
+
+  const emojiUsage = emojiCount >= cleaned.length
+    ? "heavy"
+    : emojiCount >= Math.max(1, Math.round(cleaned.length / 3))
+      ? "moderate"
+      : emojiCount > 0
+        ? "rarely"
+        : "never";
+
+  const uniquePatterns = uniqueStrings([
+    ...topMatches(cleaned, /\b(da|dei|bro|bhai|machi|yaar|please|kindly|take care|miss you)\b/gi, 4),
+    ...topMatches(cleaned, /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, 2),
+  ], 5).join(", ");
+
+  return {
+    tone: summarizeTone(cleaned),
+    language: languageSummary.mix,
+    emoji_usage: emojiUsage,
+    sample_replies: uniqueStrings([...cleaned].reverse(), 5),
+    relationship_hint: inferHeuristicRelationship(contactName, cleaned),
+    unique_patterns: uniquePatterns || "No strong contact-specific pattern detected yet",
+    analysis_mode: "heuristic",
+  };
+}
+
+function buildAIConfig(settings: any) {
+  const provider = `${settings?.ai_provider || "openrouter"}`.trim().toLowerCase();
+  const apiKey = typeof settings?.ai_api_key === "string" ? settings.ai_api_key.trim() : "";
+  const model = typeof settings?.ai_model === "string" && settings.ai_model.trim()
+    ? settings.ai_model.trim()
+    : "google/gemma-4-31b-it:free";
+  const baseUrl = typeof settings?.ai_base_url === "string" ? settings.ai_base_url.trim() : "";
+  const providerName = typeof settings?.ai_provider_name === "string" ? settings.ai_provider_name.trim() : "";
+
+  if (!apiKey) return null;
+
+  if (provider === "custom") {
+    const normalizedBase = baseUrl.replace(/\/$/, "");
+    if (!normalizedBase) return null;
+    const endpoint = normalizedBase.endsWith("/chat/completions")
+      ? normalizedBase
+      : `${normalizedBase}/chat/completions`;
+
+    return {
+      provider: "custom",
+      providerName: providerName || "Custom",
+      apiKey,
+      model,
+      endpoint,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+    };
+  }
+
+  return {
+    provider: "openrouter",
+    providerName: "OpenRouter",
+    apiKey,
+    model,
+    endpoint: "https://openrouter.ai/api/v1/chat/completions",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": Deno.env.get("VITE_SITE_URL") || Deno.env.get("SITE_URL") || SUPABASE_URL,
+      "X-OpenRouter-Title": "BusyBot",
+    },
+  };
+}
+
+async function callProviderText(prompt: string, aiConfig: any, retries: number = 2): Promise<string> {
   let lastErr: Error | null = null;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     if (attempt > 0) {
-      // Wait before retry: 2s, then 5s
-      const waitMs = attempt === 1 ? 2000 : 5000;
-      console.log(`Gemini retry ${attempt}/${retries} — waiting ${waitMs}ms...`);
-      await new Promise((r) => setTimeout(r, waitMs));
+      const waitMs = attempt === 1 ? 1500 : 3000;
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000); // 20s timeout
-
     try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          signal: controller.signal,
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-              temperature: 0.3,
-              maxOutputTokens: 2048,
-              responseMimeType: "application/json",
-            },
-          }),
-        }
-      );
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 20000);
+
+      const res = await fetch(aiConfig.endpoint, {
+        method: "POST",
+        headers: aiConfig.headers,
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: aiConfig.model,
+          messages: [{ role: "user", content: prompt }],
+          stream: false,
+          temperature: 0.3,
+        }),
+      });
 
       clearTimeout(timeout);
 
-      if (res.status === 429) {
-        lastErr = new Error("Gemini API rate limit hit (429). Your free quota may be exhausted — wait a minute and try again, or check your API key at aistudio.google.com.");
-        if (attempt < retries) continue; // retry
-        throw lastErr;
-      }
-
-      if (res.status === 400) {
-        const errText = await res.text();
-        throw new Error(`Gemini API key invalid or request rejected (400): ${errText.substring(0, 200)}`);
-      }
-
       if (!res.ok) {
         const errText = await res.text();
-        lastErr = new Error(`Gemini API error ${res.status}: ${errText.substring(0, 300)}`);
-        if (attempt < retries) continue;
+        lastErr = new Error(`${aiConfig.providerName} API error ${res.status}: ${errText.substring(0, 300)}`);
+        if (attempt < retries && (res.status === 429 || res.status >= 500)) continue;
         throw lastErr;
       }
 
       const result = await res.json();
-      let rawText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
-
-      if (!rawText) {
-        lastErr = new Error("Gemini returned empty response");
+      const content = result?.choices?.[0]?.message?.content?.trim() || "";
+      if (!content) {
+        lastErr = new Error(`${aiConfig.providerName} returned empty content`);
         if (attempt < retries) continue;
         throw lastErr;
       }
 
-      // Clean up common Gemini formatting issues
-      rawText = rawText
-        .replace(/```json\s*/gi, "")
-        .replace(/```\s*/g, "")
-        .replace(/,\s*}/g, "}")    // trailing commas before }
-        .replace(/,\s*]/g, "]")    // trailing commas before ]
-        .trim();
-
-      try {
-        return JSON.parse(rawText);
-      } catch (parseErr) {
-        // Try to extract JSON object from the response
-        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const cleaned = jsonMatch[0]
-            .replace(/,\s*}/g, "}")
-            .replace(/,\s*]/g, "]");
-          return JSON.parse(cleaned);
-        }
-        console.error("Raw Gemini text that failed to parse:", rawText.substring(0, 500));
-        lastErr = new Error(`JSON parse failed: ${String(parseErr)}`);
-        if (attempt < retries) continue;
-        throw lastErr;
-      }
+      return content;
     } catch (err) {
-      clearTimeout(timeout);
-      if (err instanceof DOMException && err.name === "AbortError") {
-        lastErr = new Error("Gemini API timed out after 20s — try again or reduce message count");
-        if (attempt < retries) continue;
-        throw lastErr;
-      }
-      if (lastErr && err === lastErr) throw err; // already handled above
       lastErr = err instanceof Error ? err : new Error(String(err));
       if (attempt >= retries) throw lastErr;
     }
   }
 
-  throw lastErr || new Error("Unknown Gemini error after retries");
+  throw lastErr || new Error("Unknown provider error");
+}
+
+async function callProviderJSON(prompt: string, aiConfig: any): Promise<any> {
+  const rawText = await callProviderText(prompt, aiConfig);
+  const cleaned = rawText
+    .replace(/```json\s*/gi, "")
+    .replace(/```\s*/g, "")
+    .replace(/,\s*}/g, "}")
+    .replace(/,\s*]/g, "]")
+    .trim();
+
+  try {
+    return JSON.parse(cleaned);
+  } catch (parseErr) {
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(
+        jsonMatch[0]
+          .replace(/,\s*}/g, "}")
+          .replace(/,\s*]/g, "]")
+      );
+    }
+    throw new Error(`Provider JSON parse failed: ${String(parseErr)}`);
+  }
 }
 
 serve(async (req) => {
@@ -135,22 +367,15 @@ serve(async (req) => {
       );
     }
 
-    // ─── Get user's Gemini API key ───
     const { data: settings } = await supabase
       .from("settings")
-      .select("gemini_api_key")
+      .select("ai_provider, ai_api_key, ai_model, ai_base_url, ai_provider_name")
       .eq("user_id", user_id)
       .single();
 
-    const geminiKey = settings?.gemini_api_key;
-    if (!geminiKey) {
-      return new Response(
-        JSON.stringify({ error: "Gemini API key not configured. Add it in Settings first." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    const aiConfig = buildAIConfig(settings);
+    const aiAvailable = !!aiConfig;
 
-    // ─── Get all user's outgoing messages with conversation context ───
     const { data: rawMessages, error: msgErr } = await supabase
       .from("messages")
       .select("content, created_at, conversation_id")
@@ -159,235 +384,178 @@ serve(async (req) => {
       .order("created_at", { ascending: false })
       .limit(200);
 
-    // Filter out media-only messages
     const userMessages = (rawMessages || []).filter(
-      (m) => m.content && m.content !== "[media message]" && m.content.trim().length > 0
+      (message) =>
+        message.content &&
+        message.content !== "[media message]" &&
+        normalizeText(message.content).length > 0
     );
 
     if (msgErr || userMessages.length < 3) {
       return new Response(
         JSON.stringify({
-          error: "Not enough messages to train. Keep chatting with BusyBot OFF — it learns from your real messages!",
+          error: "Not enough messages to train. Keep chatting with BusyBot OFF so it can learn from your real replies.",
           message_count: userMessages.length,
-          tip: "Send at least 10-20 messages naturally while BusyBot is turned off.",
+          tip: "Send at least 10 to 20 natural messages first.",
         }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    /* ═══════════════════════════════════════════════════════
-       PHASE 1: GLOBAL STYLE ANALYSIS
-       Analyze all messages together for overall personality
-       ═══════════════════════════════════════════════════════ */
-
-    // Truncate individual messages to 200 chars to keep prompt within limits
     const allMessagesText = userMessages
-      .map((m) => m.content.length > 200 ? m.content.substring(0, 200) + "..." : m.content)
+      .map((message) =>
+        message.content.length > 200 ? `${message.content.substring(0, 200)}...` : message.content
+      )
       .join("\n");
 
     const globalPrompt = `Analyze these WhatsApp messages sent by ONE person. Extract their UNIQUE communication style and personality patterns.
 
-IMPORTANT: This person may use MULTIPLE LANGUAGES including:
-- English
-- Hindi (Devanagari or Roman script: kya, kaise, haan, nahi, acha, bhai)
-- Tamil (Tamil script or Roman: da, di, machi, sollu, enna, epdi, seri)
-- Hinglish (Hindi-English mix: "acha sounds good", "kal milte hai bro")
-- Tanglish (Tamil-English mix: "seri da", "romba good", "enna pannura")
-- Any other language or code-switching
-
-Capture ALL language patterns — DO NOT ignore non-English words.
+IMPORTANT: This person may use MULTIPLE LANGUAGES including English, Hindi, Tamil, Hinglish, Tanglish, and code-switching.
 
 MESSAGES (most recent first):
 ${allMessagesText}
 
-Analyze carefully and return ONLY a valid JSON object (no markdown, no code blocks, no explanation) with these fields:
+Return ONLY valid JSON with:
 {
-  "greetings": ["ALL greetings in ANY language they use, e.g. hey, oyee, yo, vanakkam, namaste, dei, kya re"],
-  "affirmatives": ["ALL ways they say yes in ANY language, e.g. hmm, haan, acha, seri, ok da, theek hai, aamam"],
-  "negatives": ["ALL ways they say no in ANY language, e.g. nah, nahi, venda, illa, na bro"],
-  "fillers": ["ALL filler words in ANY language, e.g. like, arrey, da, yaar, basically, aana, matlab"],
-  "closings": ["ALL conversation endings in ANY language, e.g. bye, chal, seri da, ok bye, poi varen, ttyl"],
-  "emoji_favorites": ["their most used emojis"],
+  "greetings": [],
+  "affirmatives": [],
+  "negatives": [],
+  "fillers": [],
+  "closings": [],
+  "emoji_favorites": [],
   "avg_word_count": 8,
-  "detected_languages": ["list of languages detected, e.g. english, hindi, tamil, hinglish, tanglish"],
-  "primary_language": "the language they use MOST, e.g. tanglish, hinglish, english",
-  "language_mix": "description of language patterns e.g. 'Tanglish with English slang' or 'Mostly Hinglish'",
-  "tone_summary": "brief description of their communication tone and energy",
-  "signature_phrases": ["unique phrases they frequently use, in ANY language"],
-  "abbreviation_style": "how they shorten words, e.g. 'u' for 'you', 'msg' for 'message'",
-  "code_switching_pattern": "how they switch between languages mid-sentence or per-message"
-}
-
-IMPORTANT: Base this ONLY on the actual messages above. Don't invent patterns that aren't there. If a field has no matches, use an empty array []. Include words from ALL languages they use — not just English.`;
+  "detected_languages": [],
+  "primary_language": "",
+  "language_mix": "",
+  "tone_summary": "",
+  "signature_phrases": [],
+  "abbreviation_style": "",
+  "code_switching_pattern": ""
+}`;
 
     let learnedStyle;
     try {
-      learnedStyle = await callGeminiJSON(globalPrompt, geminiKey);
+      learnedStyle = aiAvailable
+        ? await callProviderJSON(globalPrompt, aiConfig)
+        : buildHeuristicGlobalStyle(userMessages);
     } catch (err) {
       console.error("Global analysis failed:", err);
-      // Fallback: build a basic style from raw message analysis instead of failing entirely
-      const errMsg = String(err);
-      if (errMsg.includes("429") || errMsg.includes("rate limit") || errMsg.includes("quota")) {
-        return new Response(
-          JSON.stringify({
-            error: "Gemini API rate limit reached. Wait 1-2 minutes and try again. If this keeps happening, check your API key quota at aistudio.google.com.",
-            details: errMsg,
-          }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      if (errMsg.includes("400") || errMsg.includes("invalid")) {
-        return new Response(
-          JSON.stringify({
-            error: "Your Gemini API key appears to be invalid. Go to Settings and update it with a valid key from aistudio.google.com/apikey.",
-            details: errMsg,
-          }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      // For other errors: build basic fallback style from raw messages
-      console.log("Building fallback style from raw message analysis...");
-      const allTexts = userMessages.map((m) => m.content.toLowerCase());
-      const allJoined = allTexts.join(" ");
-      const wordCounts = userMessages.map((m) => m.content.split(/\s+/).length);
-      const avgWords = Math.round(wordCounts.reduce((a, b) => a + b, 0) / wordCounts.length);
-
-      // Detect emojis
-      const emojiRegex = /[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu;
-      const allEmojis = allJoined.match(emojiRegex) || [];
-      const emojiFreq: Record<string, number> = {};
-      for (const e of allEmojis) { emojiFreq[e] = (emojiFreq[e] || 0) + 1; }
-      const topEmojis = Object.entries(emojiFreq).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([e]) => e);
-
       learnedStyle = {
-        greetings: [],
-        affirmatives: [],
-        negatives: [],
-        fillers: [],
-        closings: [],
-        emoji_favorites: topEmojis,
-        avg_word_count: avgWords,
-        detected_languages: ["unknown"],
-        primary_language: "unknown",
-        language_mix: "Could not analyze — Gemini API failed",
-        tone_summary: "Could not analyze — Gemini API failed. Retry training.",
-        signature_phrases: [],
-        abbreviation_style: "",
-        code_switching_pattern: "",
+        ...buildHeuristicGlobalStyle(userMessages),
         _fallback: true,
-        _fallback_reason: errMsg.substring(0, 200),
+        _fallback_reason: String(err).substring(0, 200),
       };
     }
 
-    /* ═══════════════════════════════════════════════════════
-       PHASE 2: PER-CONTACT STYLE ANALYSIS
-       Group messages by conversation → analyze how user talks
-       to each specific contact differently.
-       ═══════════════════════════════════════════════════════ */
-
-    // Group messages by conversation_id
     const byConversation: Record<string, string[]> = {};
-    for (const msg of userMessages) {
-      const cid = msg.conversation_id;
-      if (!byConversation[cid]) byConversation[cid] = [];
-      byConversation[cid].push(msg.content);
+    for (const message of userMessages) {
+      const conversationId = message.conversation_id;
+      if (!byConversation[conversationId]) byConversation[conversationId] = [];
+      byConversation[conversationId].push(message.content);
     }
 
-    // Get conversation details (contact names)
     const conversationIds = Object.keys(byConversation);
     const { data: conversations } = await supabase
       .from("conversations")
       .select("id, contact_name, contact_number")
       .in("id", conversationIds);
 
-    const convoMap: Record<string, { name: string; number: string }> = {};
-    for (const c of conversations || []) {
-      convoMap[c.id] = { name: c.contact_name || c.contact_number, number: c.contact_number };
+    const conversationMap: Record<string, { name: string; number: string }> = {};
+    for (const conversation of conversations || []) {
+      conversationMap[conversation.id] = {
+        name: conversation.contact_name || conversation.contact_number,
+        number: conversation.contact_number,
+      };
     }
 
-    // Analyze top contacts (those with 5+ messages — enough data)
     const perContact: Record<string, any> = {};
     const topConversations = Object.entries(byConversation)
-      .filter(([_, msgs]) => msgs.length >= 5)
+      .filter(([, messages]) => messages.length >= 5)
       .sort((a, b) => b[1].length - a[1].length)
-      .slice(0, 10); // Top 10 contacts max
+      .slice(0, 10);
 
-    for (const [convoId, messages] of topConversations) {
-      const contact = convoMap[convoId];
+    for (const [conversationId, messages] of topConversations) {
+      const contact = conversationMap[conversationId];
       if (!contact) continue;
 
-      // Also fetch what the CONTACT sends (to understand conversation pairs)
-      const { data: contactMsgs } = await supabase
+      const { data: contactMessages } = await supabase
         .from("messages")
         .select("sender, content")
-        .eq("conversation_id", convoId)
+        .eq("conversation_id", conversationId)
         .order("created_at", { ascending: true })
         .limit(100);
 
-      // Build conversation pairs: what they said → what user replied
       const pairs: string[] = [];
-      if (contactMsgs) {
-        for (let i = 0; i < contactMsgs.length - 1; i++) {
-          if (contactMsgs[i].sender === "contact" && contactMsgs[i + 1]?.sender === "user") {
-            pairs.push(`They: "${contactMsgs[i].content}" → You: "${contactMsgs[i + 1].content}"`);
+      if (contactMessages) {
+        for (let i = 0; i < contactMessages.length - 1; i++) {
+          if (contactMessages[i].sender === "contact" && contactMessages[i + 1]?.sender === "user") {
+            pairs.push(`They: "${contactMessages[i].content}" -> You: "${contactMessages[i + 1].content}"`);
           }
         }
       }
 
-      const contactPrompt = `Analyze how this person talks to "${contact.name}" specifically on WhatsApp.
-
-NOTE: Messages may be in English, Hindi, Tamil, Hinglish (Hindi+English), Tanglish (Tamil+English), or any mix. Capture the ACTUAL language used.
+      let contactStyle;
+      if (aiAvailable) {
+        const contactPrompt = `Analyze how this person talks to "${contact.name}" specifically on WhatsApp.
 
 THEIR MESSAGES TO ${contact.name}:
 ${messages.slice(0, 50).join("\n")}
 
-${pairs.length > 0 ? `CONVERSATION PAIRS (what ${contact.name} said → how this person replied):\n${pairs.slice(0, 20).join("\n")}` : ""}
+${pairs.length > 0 ? `CONVERSATION PAIRS:\n${pairs.slice(0, 20).join("\n")}` : ""}
 
-Return ONLY a valid JSON (no markdown, no code blocks):
+Return ONLY JSON:
 {
-  "tone": "how they talk to this specific person (e.g. very casual, formal, affectionate, professional, playful)",
-  "language": "EXACT language with this person (e.g. Tanglish, Hinglish, pure Tamil, pure Hindi, English, mixed). Be specific.",
-  "emoji_usage": "how they use emojis with this person (heavy, moderate, rarely, never)",
-  "sample_replies": ["3-5 short examples of how they'd typically reply to this person — keep in their ORIGINAL language, don't translate"],
-  "relationship_hint": "inferred relationship (friend, close friend, family, colleague, boss, romantic, acquaintance)",
-  "unique_patterns": "any special way they talk to THIS person that differs from their general style, including language switches"
+  "tone": "",
+  "language": "",
+  "emoji_usage": "",
+  "sample_replies": [],
+  "relationship_hint": "",
+  "unique_patterns": ""
 }`;
 
-      try {
-        const contactStyle = await callGeminiJSON(contactPrompt, geminiKey);
-        const contactKey = contact.name.toLowerCase().replace(/\s+/g, "_");
-        perContact[contactKey] = {
-          ...contactStyle,
-          contact_name: contact.name,
-          messages_analyzed: messages.length,
-        };
-        console.log(`Per-contact analysis done for ${contact.name}: ${messages.length} messages`);
-      } catch (err) {
-        console.error(`Per-contact analysis failed for ${contact.name}:`, err);
-        // Non-fatal — continue with other contacts
+        try {
+          contactStyle = await callProviderJSON(contactPrompt, aiConfig);
+        } catch (err) {
+          console.error(`Per-contact provider analysis failed for ${contact.name}:`, err);
+          contactStyle = {
+            ...buildHeuristicContactStyle(contact.name, messages),
+            _fallback: true,
+            _fallback_reason: String(err).substring(0, 200),
+          };
+        }
+      } else {
+        contactStyle = buildHeuristicContactStyle(contact.name, messages);
       }
+
+      const contactKey = contact.name.toLowerCase().replace(/\s+/g, "_");
+      perContact[contactKey] = {
+        ...contactStyle,
+        contact_name: contact.name,
+        messages_analyzed: messages.length,
+      };
     }
 
-    // Merge per-contact data into learned style
     learnedStyle.per_contact = perContact;
     learnedStyle.contacts_analyzed = Object.keys(perContact).length;
+    learnedStyle.analysis_mode = aiAvailable && !learnedStyle._fallback ? "provider" : "heuristic";
 
-    /* ═══════════════════════════════════════════════════════
-       SAVE TO DATABASE
-       ═══════════════════════════════════════════════════════ */
+    const toneSummary = typeof learnedStyle.tone_summary === "string" ? learnedStyle.tone_summary.toLowerCase() : "";
+    const signaturePhrases = Array.isArray(learnedStyle.signature_phrases) ? learnedStyle.signature_phrases : [];
+    const emojiFavorites = Array.isArray(learnedStyle.emoji_favorites) ? learnedStyle.emoji_favorites : [];
 
-    // Upsert — create row if it doesn't exist, update if it does
     const { error: updateErr } = await supabase
       .from("personality_profiles")
       .upsert(
         {
-          user_id: user_id,
+          user_id,
           learned_style: learnedStyle,
           last_trained_at: new Date().toISOString(),
           training_message_count: userMessages.length,
           avg_length: learnedStyle.avg_word_count || 15,
-          tone: learnedStyle.tone_summary ? (learnedStyle.tone_summary.toLowerCase().includes("formal") ? "formal" : "casual") : "casual",
-          emoji_usage: (learnedStyle.emoji_favorites?.length || 0) > 0,
+          tone: toneSummary.includes("formal") ? "formal" : "casual",
+          emoji_usage: emojiFavorites.length > 0,
+          common_phrases: signaturePhrases.slice(0, 5),
+          formality_score: toneSummary.includes("formal") ? 0.75 : toneSummary.includes("polite") ? 0.65 : 0.35,
         },
         { onConflict: "user_id" }
       );
@@ -403,13 +571,16 @@ Return ONLY a valid JSON (no markdown, no code blocks):
     return new Response(
       JSON.stringify({
         status: "trained",
+        training_mode: learnedStyle.analysis_mode,
+        ai_available: aiAvailable,
         messages_analyzed: userMessages.length,
         contacts_analyzed: Object.keys(perContact).length,
-        per_contact_summary: Object.entries(perContact).map(([key, val]: [string, any]) => ({
-          contact: val.contact_name,
-          messages: val.messages_analyzed,
-          tone: val.tone,
-          relationship: val.relationship_hint,
+        per_contact_summary: Object.values(perContact).map((value: any) => ({
+          contact: value.contact_name,
+          messages: value.messages_analyzed,
+          tone: value.tone,
+          relationship: value.relationship_hint,
+          analysis_mode: value.analysis_mode || learnedStyle.analysis_mode,
         })),
         learned_style: learnedStyle,
       }),

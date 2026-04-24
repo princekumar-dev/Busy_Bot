@@ -165,6 +165,11 @@ export type Database = {
       }
       settings: {
         Row: {
+          ai_api_key: string | null
+          ai_base_url: string | null
+          ai_model: string
+          ai_provider: string
+          ai_provider_name: string | null
           auto_reply_text: string | null
           busy_mode: boolean
           created_at: string
@@ -176,6 +181,11 @@ export type Database = {
           voice_reply_enabled: boolean
         }
         Insert: {
+          ai_api_key?: string | null
+          ai_base_url?: string | null
+          ai_model?: string
+          ai_provider?: string
+          ai_provider_name?: string | null
           auto_reply_text?: string | null
           busy_mode?: boolean
           created_at?: string
@@ -187,6 +197,11 @@ export type Database = {
           voice_reply_enabled?: boolean
         }
         Update: {
+          ai_api_key?: string | null
+          ai_base_url?: string | null
+          ai_model?: string
+          ai_provider?: string
+          ai_provider_name?: string | null
           auto_reply_text?: string | null
           busy_mode?: boolean
           created_at?: string

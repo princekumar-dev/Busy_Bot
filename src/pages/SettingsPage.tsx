@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import { Bell, Eye, EyeOff, Key, Save, Settings, Volume2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -7,8 +8,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Settings, Save, Volume2, Bell, Key, Eye, EyeOff } from "lucide-react";
 import { EvoQRConnector } from "@/components/EvoQRConnector";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+type AIProvider = "openrouter" | "custom";
+
+const DEFAULT_OPENROUTER_MODEL = "google/gemma-4-31b-it:free";
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -18,11 +29,16 @@ export default function SettingsPage() {
   const [voiceReply, setVoiceReply] = useState(false);
   const [emergencyNotify, setEmergencyNotify] = useState(true);
   const [autoReplyText, setAutoReplyText] = useState("");
-  const [geminiApiKey, setGeminiApiKey] = useState("");
-  const [showGeminiKey, setShowGeminiKey] = useState(false);
+  const [aiProvider, setAiProvider] = useState<AIProvider>("openrouter");
+  const [aiProviderName, setAiProviderName] = useState("");
+  const [aiApiKey, setAiApiKey] = useState("");
+  const [aiModel, setAiModel] = useState(DEFAULT_OPENROUTER_MODEL);
+  const [aiBaseUrl, setAiBaseUrl] = useState("");
+  const [showAiKey, setShowAiKey] = useState(false);
 
   useEffect(() => {
     if (!user) return;
+
     supabase
       .from("settings")
       .select("*")
@@ -33,7 +49,11 @@ export default function SettingsPage() {
           setVoiceReply(data.voice_reply_enabled);
           setEmergencyNotify(data.emergency_notify);
           setAutoReplyText(data.auto_reply_text || "");
-          setGeminiApiKey((data as any).gemini_api_key || "");
+          setAiProvider(((data as any).ai_provider || "openrouter") as AIProvider);
+          setAiProviderName((data as any).ai_provider_name || "");
+          setAiApiKey((data as any).ai_api_key || (data as any).gemini_api_key || "");
+          setAiModel((data as any).ai_model || DEFAULT_OPENROUTER_MODEL);
+          setAiBaseUrl((data as any).ai_base_url || "");
         }
         setLoading(false);
       });
@@ -41,14 +61,25 @@ export default function SettingsPage() {
 
   const handleSave = async () => {
     if (!user) return;
+
     setSaving(true);
+    const trimmedBaseUrl = aiBaseUrl.trim();
+    const trimmedProviderName = aiProviderName.trim();
+    const trimmedModel = aiModel.trim() || DEFAULT_OPENROUTER_MODEL;
+    const trimmedApiKey = aiApiKey.trim();
+
     const { error } = await supabase
       .from("settings")
       .update({
         voice_reply_enabled: voiceReply,
         emergency_notify: emergencyNotify,
         auto_reply_text: autoReplyText,
-        gemini_api_key: geminiApiKey || null,
+        ai_provider: aiProvider,
+        ai_provider_name: aiProvider === "custom" ? trimmedProviderName || null : "OpenRouter",
+        ai_api_key: trimmedApiKey || null,
+        ai_model: trimmedModel,
+        ai_base_url: aiProvider === "custom" ? trimmedBaseUrl || null : null,
+        gemini_api_key: null,
       } as any)
       .eq("user_id", user.id);
 
@@ -62,9 +93,12 @@ export default function SettingsPage() {
 
   if (loading) return <div className="h-96 animate-pulse rounded-xl bg-secondary" />;
 
+  const isCustomProvider = aiProvider === "custom";
+  const providerLabel = isCustomProvider ? aiProviderName.trim() || "Custom provider" : "OpenRouter";
+
   return (
     <div className="animate-slide-up max-w-2xl">
-      <div className="flex items-center gap-3 mb-6">
+      <div className="mb-6 flex items-center gap-3">
         <div className="rounded-lg bg-primary/10 p-2">
           <Settings className="h-5 w-5 text-primary" />
         </div>
@@ -77,13 +111,12 @@ export default function SettingsPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        {/* API QR Connection - Spans full width */}
         <div className="md:col-span-2">
           <EvoQRConnector />
         </div>
-        {/* Voice Reply */}
+
         <div className="glass rounded-xl p-6">
-          <div className="flex items-center gap-3 mb-4">
+          <div className="mb-4 flex items-center gap-3">
             <Volume2 className="h-4 w-4 text-primary" />
             <h3 className="font-display text-base font-semibold text-foreground">Voice Replies</h3>
           </div>
@@ -96,9 +129,8 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* Emergency Notifications */}
         <div className="glass rounded-xl p-6">
-          <div className="flex items-center gap-3 mb-4">
+          <div className="mb-4 flex items-center gap-3">
             <Bell className="h-4 w-4 text-primary" />
             <h3 className="font-display text-base font-semibold text-foreground">Notifications</h3>
           </div>
@@ -111,63 +143,119 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* Gemini API Key */}
-        <div className="glass rounded-xl p-6">
-          <div className="flex items-center gap-3 mb-4">
+        <div className="glass rounded-xl p-6 md:col-span-2">
+          <div className="mb-4 flex items-center gap-3">
             <Key className="h-4 w-4 text-primary" />
-            <h3 className="font-display text-base font-semibold text-foreground">Gemini AI</h3>
+            <h3 className="font-display text-base font-semibold text-foreground">Text Generation</h3>
           </div>
-          <Label className="text-foreground font-display text-sm">Gemini API Key</Label>
-          <div className="relative mt-2">
-            <Input
-              type={showGeminiKey ? "text" : "password"}
-              className="bg-secondary/50 border-border pr-10"
-              placeholder="AIzaSy... (get from aistudio.google.com)"
-              value={geminiApiKey}
-              onChange={(e) => setGeminiApiKey(e.target.value)}
-            />
-            <button
-              type="button"
-              onClick={() => setShowGeminiKey(!showGeminiKey)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            >
-              {showGeminiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label className="font-display text-sm text-foreground">Provider</Label>
+              <Select value={aiProvider} onValueChange={(value: AIProvider) => setAiProvider(value)}>
+                <SelectTrigger className="border-border bg-secondary/50">
+                  <SelectValue placeholder="Select provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="openrouter">OpenRouter (Default)</SelectItem>
+                  <SelectItem value="custom">Custom Provider</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {isCustomProvider && (
+              <div className="space-y-2">
+                <Label className="font-display text-sm text-foreground">Provider Name</Label>
+                <Input
+                  className="border-border bg-secondary/50"
+                  placeholder="My provider"
+                  value={aiProviderName}
+                  onChange={(e) => setAiProviderName(e.target.value)}
+                />
+              </div>
+            )}
+
+            <div className="space-y-2 md:col-span-2">
+              <Label className="font-display text-sm text-foreground">
+                {isCustomProvider ? "API Key" : "OpenRouter API Key"}
+              </Label>
+              <div className="relative">
+                <Input
+                  type={showAiKey ? "text" : "password"}
+                  className="border-border bg-secondary/50 pr-10"
+                  placeholder={isCustomProvider ? "Paste your provider API key" : "sk-or-v1-..."}
+                  value={aiApiKey}
+                  onChange={(e) => setAiApiKey(e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowAiKey((current) => !current)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showAiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="font-display text-sm text-foreground">Model</Label>
+              <Input
+                className="border-border bg-secondary/50"
+                placeholder={DEFAULT_OPENROUTER_MODEL}
+                value={aiModel}
+                onChange={(e) => setAiModel(e.target.value)}
+              />
+            </div>
+
+            {isCustomProvider && (
+              <div className="space-y-2">
+                <Label className="font-display text-sm text-foreground">Base URL</Label>
+                <Input
+                  className="border-border bg-secondary/50"
+                  placeholder="https://api.example.com/v1"
+                  value={aiBaseUrl}
+                  onChange={(e) => setAiBaseUrl(e.target.value)}
+                />
+              </div>
+            )}
           </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Powers smart AI replies that match your personality. Get a free key from{" "}
-            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" className="text-primary underline">Google AI Studio</a>.
+
+          <p className="mt-3 text-xs text-muted-foreground">
+            OpenRouter is the default text-generation provider. Custom mode expects an OpenAI-compatible `/chat/completions` API.
           </p>
-          {geminiApiKey && (
-            <div className="mt-2 flex items-center gap-1.5">
-              <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-              <span className="text-xs text-green-500 font-medium">AI replies active</span>
-            </div>
+          {!isCustomProvider && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Recommended starter model: `google/gemma-4-31b-it:free`
+            </p>
           )}
-          {!geminiApiKey && (
-            <div className="mt-2 flex items-center gap-1.5">
-              <div className="h-2 w-2 rounded-full bg-yellow-500" />
-              <span className="text-xs text-yellow-500 font-medium">Using fallback text (no AI)</span>
-            </div>
-          )}
+
+          <div className="mt-3 flex items-center gap-1.5">
+            <div className={`h-2 w-2 rounded-full ${aiApiKey.trim() ? "bg-green-500 animate-pulse" : "bg-yellow-500"}`} />
+            <span className={`text-xs font-medium ${aiApiKey.trim() ? "text-green-500" : "text-yellow-500"}`}>
+              {aiApiKey.trim() ? `${providerLabel} configured` : "Using personalized fallback mode"}
+            </span>
+          </div>
         </div>
 
-        {/* Auto Reply Text */}
-        <div className="glass rounded-xl p-6">
-          <Label className="text-foreground font-display text-sm">Fallback Auto-Reply Message</Label>
+        <div className="glass rounded-xl p-6 md:col-span-2">
+          <Label className="font-display text-sm text-foreground">Fallback Auto-Reply Message</Label>
           <Textarea
-            className="mt-3 min-h-[100px] bg-secondary/50 border-border resize-none"
+            className="mt-3 min-h-[100px] resize-none border-border bg-secondary/50"
             placeholder="Hey, caught up with something rn. Will text you back soon!"
             value={autoReplyText}
             onChange={(e) => setAutoReplyText(e.target.value)}
           />
           <p className="mt-2 text-xs text-muted-foreground">
-            Used only when Gemini AI is not configured or fails
+            Used when provider-based text generation is unavailable, plus as the last-resort backup if the style-aware fallback cannot build a reply
           </p>
         </div>
 
         <div className="md:col-span-2">
-          <Button onClick={handleSave} disabled={saving} className="w-full gradient-primary font-display font-semibold text-primary-foreground glow">
+          <Button
+            onClick={handleSave}
+            disabled={saving}
+            className="w-full gradient-primary font-display font-semibold text-primary-foreground glow"
+          >
             {saving ? (
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
             ) : (

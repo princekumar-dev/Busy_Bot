@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { useAuth } from "@/hooks/useAuth";
 import { Navigate } from "react-router-dom";
+import { Bot, Mail, Lock, User, ArrowRight } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Bot, Mail, Lock, User, ArrowRight } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 
 export default function Auth() {
   const { user, signIn, signUp } = useAuth();
@@ -22,29 +22,64 @@ export default function Auth() {
     e.preventDefault();
     setLoading(true);
 
-    const { error } = isLogin
-      ? await signIn(email, password)
-      : await signUp(email, password, displayName);
+    try {
+      if (isLogin) {
+        const { error } = await signIn(email.trim(), password);
 
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else if (!isLogin) {
-      toast({ title: "Check your email", description: "We sent you a confirmation link." });
+        if (error) {
+          toast({ title: "Error", description: error.message, variant: "destructive" });
+        }
+
+        return;
+      }
+
+      const { error, status } = await signUp(email.trim(), password, displayName.trim());
+
+      if (error) {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      } else if (status === "confirmation_sent") {
+        toast({
+          title: "Check your email",
+          description: "We sent you a confirmation link. Open it to finish your sign up.",
+        });
+        setIsLogin(true);
+      } else if (status === "already_registered") {
+        toast({
+          title: "Account already exists",
+          description: "This email is already registered. Try signing in instead.",
+          variant: "destructive",
+        });
+        setIsLogin(true);
+      } else if (status === "signed_in") {
+        toast({
+          title: "Account created",
+          description: "Your account is ready and you have been signed in.",
+        });
+      } else {
+        toast({
+          title: "Sign up submitted",
+          description:
+            "Your account request was received. If no email arrives, check your Supabase Auth email settings.",
+        });
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Something went wrong while processing your request.";
+
+      toast({ title: "Error", description: message, variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      {/* Background effects */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute -top-40 -right-40 h-80 w-80 rounded-full bg-primary/5 blur-3xl" />
         <div className="absolute -bottom-40 -left-40 h-80 w-80 rounded-full bg-primary/5 blur-3xl" />
       </div>
 
       <div className="relative w-full max-w-md animate-slide-up">
-        {/* Logo */}
         <div className="mb-8 text-center">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl gradient-primary glow">
             <Bot className="h-8 w-8 text-primary-foreground" />
@@ -57,7 +92,6 @@ export default function Auth() {
           </p>
         </div>
 
-        {/* Form */}
         <div className="glass rounded-2xl p-8">
           <h2 className="mb-6 font-display text-xl font-semibold text-foreground">
             {isLogin ? "Welcome back" : "Create account"}
@@ -66,7 +100,9 @@ export default function Auth() {
           <form onSubmit={handleSubmit} className="space-y-4">
             {!isLogin && (
               <div className="space-y-2">
-                <Label htmlFor="name" className="text-muted-foreground">Display Name</Label>
+                <Label htmlFor="name" className="text-muted-foreground">
+                  Display Name
+                </Label>
                 <div className="relative">
                   <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -74,14 +110,16 @@ export default function Auth() {
                     placeholder="Your name"
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
-                    className="pl-10 bg-secondary/50 border-border"
+                    className="border-border bg-secondary/50 pl-10"
                   />
                 </div>
               </div>
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-muted-foreground">Email</Label>
+              <Label htmlFor="email" className="text-muted-foreground">
+                Email
+              </Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -91,29 +129,41 @@ export default function Auth() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="pl-10 bg-secondary/50 border-border"
+                  className="border-border bg-secondary/50 pl-10"
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-muted-foreground">Password</Label>
+              <Label htmlFor="password" className="text-muted-foreground">
+                Password
+              </Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   id="password"
                   type="password"
-                  placeholder="••••••••"
+                  placeholder="Enter password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   minLength={6}
-                  className="pl-10 bg-secondary/50 border-border"
+                  className="border-border bg-secondary/50 pl-10"
                 />
               </div>
             </div>
 
-            <Button type="submit" disabled={loading} className="w-full gradient-primary font-display font-semibold text-primary-foreground glow">
+            {!isLogin && (
+              <p className="text-sm text-muted-foreground">
+                After creating your account, open the confirmation email to finish signing in.
+              </p>
+            )}
+
+            <Button
+              type="submit"
+              disabled={loading}
+              className="w-full font-display font-semibold text-primary-foreground glow gradient-primary"
+            >
               {loading ? (
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
               ) : (
@@ -127,8 +177,10 @@ export default function Auth() {
 
           <div className="mt-6 text-center">
             <button
-              onClick={() => setIsLogin(!isLogin)}
-              className="text-sm text-muted-foreground hover:text-primary transition-colors"
+              type="button"
+              disabled={loading}
+              onClick={() => setIsLogin((current) => !current)}
+              className="text-sm text-muted-foreground transition-colors hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isLogin ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
             </button>
