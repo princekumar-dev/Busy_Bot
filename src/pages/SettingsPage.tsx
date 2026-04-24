@@ -89,93 +89,38 @@ export default function SettingsPage() {
       return;
     }
 
-    // Validate API key where possible. If validation cannot be completed due to
-    // network/CORS/timeouts we allow saving but warn the user. If the provider
-    // explicitly rejects the key (401/403) we block the save.
-    async function validateApiKey(): Promise<boolean | null> {
-      if (!trimmedApiKey) return true; // nothing to validate
-
-      const timeoutMs = 8000;
-      const controller = new AbortController();
-      const to = setTimeout(() => controller.abort(), timeoutMs);
-
+    // Server-side validation via Supabase Edge Function to avoid CORS issues.
+    async function serverValidate(): Promise<'valid' | 'invalid' | 'inconclusive'> {
+      if (!trimmedApiKey) return 'valid';
       try {
-        if (aiProvider === "openrouter") {
-          // OpenRouter exposes a models listing endpoint that accepts Bearer tokens
-          const res = await fetch("https://api.openrouter.ai/v1/models", {
-            method: "GET",
-            headers: { Authorization: `Bearer ${trimmedApiKey}` },
-            signal: controller.signal,
-          });
-          clearTimeout(to);
-          if (res.ok) return true;
-          if (res.status === 401 || res.status === 403) return false;
-          return null; // unknown (rate limit, CORS, etc.)
-        }
-
-        if (aiProvider === "custom") {
-          const base = trimmedBaseUrl.replace(/\/+$/, "");
-          // Try common OpenAI-compatible model list endpoint first
-          try {
-            const res = await fetch(`${base}/v1/models`, {
-              method: "GET",
-              headers: { Authorization: `Bearer ${trimmedApiKey}` },
-              signal: controller.signal,
-            });
-            clearTimeout(to);
-            if (res.ok) return true;
-            if (res.status === 401 || res.status === 403) return false;
-          } catch (e) {
-            // ignore and try chat completions fallback
-          }
-
-          // Fallback: try a minimal chat/completions request (may consume quota)
-          try {
-            const res2 = await fetch(`${base}/v1/chat/completions`, {
-              method: "POST",
-              headers: { Authorization: `Bearer ${trimmedApiKey}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ model: trimmedModel || "gpt-4o-mini", messages: [{ role: "user", content: "hi" }], max_tokens: 1 }),
-              signal: controller.signal,
-            });
-            clearTimeout(to);
-            if (res2.ok) return true;
-            if (res2.status === 401 || res2.status === 403) return false;
-            return null;
-          } catch (e) {
-            clearTimeout(to);
-            return null;
-          }
-        }
-
-        clearTimeout(to);
-        return null;
-      } catch (err) {
-        clearTimeout(to);
-        // Abort or network/CORS error — validation inconclusive
-        return null;
+        const supaUrl = import.meta.env.VITE_SUPABASE_URL;
+        if (!supaUrl) return 'inconclusive';
+        const res = await fetch(`${supaUrl.replace(/\/+$/,'')}/functions/v1/validate-api-key`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider: aiProvider, api_key: trimmedApiKey, base_url: trimmedBaseUrl, model: trimmedModel }),
+        });
+        if (!res.ok) return 'inconclusive';
+        const body = await res.json();
+        if (body.result === 'valid') return 'valid';
+        if (body.result === 'invalid') return 'invalid';
+        return 'inconclusive';
+      } catch (e) {
+        return 'inconclusive';
       }
     }
 
-    const validation = await validateApiKey();
-    if (validation === false) {
+    const validation = await serverValidate();
+    if (validation === 'invalid') {
       setApiValidation('invalid');
-      toast({
-        title: "Invalid API key",
-        description: "The API key was rejected by the provider (401/403). Please check and try again.",
-        variant: "destructive",
-      });
+      toast({ title: 'Invalid API key', description: 'The API key was rejected by the provider (401/403). Please check and try again.', variant: 'destructive' });
       setSaving(false);
       return;
     }
-    if (validation === null && trimmedApiKey) {
+    if (validation === 'inconclusive' && trimmedApiKey) {
       setApiValidation('inconclusive');
-      toast({
-        title: "Key validation inconclusive",
-        description:
-          "Unable to verify the API key due to network/CORS or provider response. The key will still be saved, but if generation fails you may need to recheck the key or configure a server-side validation.",
-        variant: "warning",
-      });
-    } else if (validation === true) {
+      toast({ title: 'Key validation inconclusive', description: "Unable to verify the API key due to network/provider response. The key will still be saved.", variant: 'warning' });
+    } else if (validation === 'valid') {
       setApiValidation('valid');
     }
 

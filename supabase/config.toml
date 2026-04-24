@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.train-personality]
 verify_jwt = false
+
+[functions.validate-api-key]
+verify_jwt = false
