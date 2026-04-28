@@ -1,4 +1,4 @@
-import { Bot, LayoutDashboard, MessageSquare, Brain, BarChart3, Settings, LogOut } from "lucide-react";
+import { Bot, LayoutDashboard, MessageSquare, Brain, BarChart3, Settings, LogOut, Workflow, ScrollText } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -18,6 +18,8 @@ const navItems = [
   { title: "Conversations", url: "/conversations", icon: MessageSquare },
   { title: "Personality", url: "/personality", icon: Brain },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
+  { title: "Operations", url: "/operations", icon: Workflow },
+  { title: "Audit Log", url: "/audit-log", icon: ScrollText },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 

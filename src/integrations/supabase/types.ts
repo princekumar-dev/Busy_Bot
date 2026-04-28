@@ -46,34 +46,52 @@ export type Database = {
       }
       messages: {
         Row: {
+          approval_status: string | null
+          confidence_score: number | null
           content: string
           conversation_id: string
           created_at: string
+          delivery_error: string | null
+          delivery_status: string | null
           id: string
           is_auto_reply: boolean | null
           message_type: string
+          policy_action: string | null
+          risk_level: string | null
           sender: string
           urgency: string | null
           user_id: string
         }
         Insert: {
+          approval_status?: string | null
+          confidence_score?: number | null
           content: string
           conversation_id: string
           created_at?: string
+          delivery_error?: string | null
+          delivery_status?: string | null
           id?: string
           is_auto_reply?: boolean | null
           message_type?: string
+          policy_action?: string | null
+          risk_level?: string | null
           sender: string
           urgency?: string | null
           user_id: string
         }
         Update: {
+          approval_status?: string | null
+          confidence_score?: number | null
           content?: string
           conversation_id?: string
           created_at?: string
+          delivery_error?: string | null
+          delivery_status?: string | null
           id?: string
           is_auto_reply?: boolean | null
           message_type?: string
+          policy_action?: string | null
+          risk_level?: string | null
           sender?: string
           urgency?: string | null
           user_id?: string
@@ -87,6 +105,156 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      approval_queue: {
+        Row: {
+          contact_number: string
+          conversation_id: string
+          created_at: string
+          draft_reply: string
+          edited_reply: string | null
+          id: string
+          incoming_message: string
+          review_note: string | null
+          risk_level: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          contact_number: string
+          conversation_id: string
+          created_at?: string
+          draft_reply: string
+          edited_reply?: string | null
+          id?: string
+          incoming_message: string
+          review_note?: string | null
+          risk_level?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          contact_number?: string
+          conversation_id?: string
+          created_at?: string
+          draft_reply?: string
+          edited_reply?: string | null
+          id?: string
+          incoming_message?: string
+          review_note?: string | null
+          risk_level?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      contact_rules: {
+        Row: {
+          contact_number: string
+          created_at: string
+          emoji_level: string
+          id: string
+          language_preference: string
+          max_reply_words: number
+          relationship_style: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          contact_number: string
+          created_at?: string
+          emoji_level?: string
+          id?: string
+          language_preference?: string
+          max_reply_words?: number
+          relationship_style?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          contact_number?: string
+          created_at?: string
+          emoji_level?: string
+          id?: string
+          language_preference?: string
+          max_reply_words?: number
+          relationship_style?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      reply_events: {
+        Row: {
+          confidence_score: number | null
+          conversation_id: string | null
+          created_at: string
+          id: string
+          message_id: string | null
+          payload: Json | null
+          reason: string | null
+          risk_level: string | null
+          stage: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          confidence_score?: number | null
+          conversation_id?: string | null
+          created_at?: string
+          id?: string
+          message_id?: string | null
+          payload?: Json | null
+          reason?: string | null
+          risk_level?: string | null
+          stage: string
+          status: string
+          user_id: string
+        }
+        Update: {
+          confidence_score?: number | null
+          conversation_id?: string | null
+          created_at?: string
+          id?: string
+          message_id?: string | null
+          payload?: Json | null
+          reason?: string | null
+          risk_level?: string | null
+          stage?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_data_controls: {
+        Row: {
+          consent_disclosure_enabled: boolean
+          created_at: string
+          data_retention_days: number
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          consent_disclosure_enabled?: boolean
+          created_at?: string
+          data_retention_days?: number
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          consent_disclosure_enabled?: boolean
+          created_at?: string
+          data_retention_days?: number
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       personality_profiles: {
         Row: {

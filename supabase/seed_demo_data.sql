@@ -136,9 +136,9 @@ BEGIN
   VALUES
     (conv_casual, demo_user_id, 'contact', 'broo you coming for the match tonight? 🏏', 'text', 'normal', false, base_ts + interval '1 hour'),
 
-    -- BusyBot auto-reply (Gemini-generated, casual tone matching the friend's style)
+    -- BusyBot auto-reply (first message = self-introduction)
     (conv_casual, demo_user_id, 'bot',
-     'Heyyy! 🙌 He''s a bit caught up right now but he was definitely talking about it earlier. Let me check and get back to you — don''t start without us tho! 😄🏏',
+     'Hey! 👋 I''m BusyBot, his personal assistant. He''s a bit caught up right now but he was definitely talking about the match earlier. Let me check and get back to you — don''t start without us tho! 😄🏏',
      'text', 'normal', true, base_ts + interval '1 hour 1 minute'),
 
     -- Rohit follows up
@@ -172,9 +172,9 @@ BEGIN
      'Hi, can you share the Q4 report by end of day? The client meeting is tomorrow at 10 AM.',
      'text', 'important', false, base_ts + interval '4 hours'),
 
-    -- BusyBot replies professionally (Gemini picks up on urgency and work context)
+    -- BusyBot replies professionally (first message = self-introduction)
     (conv_work, demo_user_id, 'bot',
-     'Hi Umesh! Thanks for the reminder. He''s currently occupied but has noted this as a priority. The Q4 report will be shared before end of day today. If there''s anything specific you need highlighted for the client meeting, please let me know and I''ll make sure he sees it right away.',
+     'Hi Umesh! I''m BusyBot, his personal assistant. He''s currently occupied but has noted this as a priority. The Q4 report will be shared before end of day today. If there''s anything specific you need highlighted for the client meeting, please let me know and I''ll make sure he sees it right away.',
      'text', 'important', true, base_ts + interval '4 hours 1 minute'),
 
     -- Manager sends follow-up about specific data
@@ -205,9 +205,9 @@ BEGIN
     -- Mom sends a normal message first
     (conv_emergency, demo_user_id, 'contact', 'Beta, dinner kya khaoge aaj? 🍛', 'text', 'normal', false, base_ts + interval '8 hours'),
 
-    -- BusyBot handles warmly
+    -- BusyBot handles warmly (first message = self-introduction)
     (conv_emergency, demo_user_id, 'bot',
-     'Hi! 🙏 He''s a little busy right now but I''m sure he''ll love whatever you make! He''ll message you back soon. 😊🍛',
+     'Hi! 🙏 I''m BusyBot, his personal assistant. He''s a little busy right now but I''m sure he''ll love whatever you make! He''ll message you back soon. 😊🍛',
      'text', 'normal', true, base_ts + interval '8 hours 1 minute'),
 
     -- Later, Mom sends something urgent
@@ -243,9 +243,9 @@ BEGIN
      'Bhai kal ka plan confirm hai na? Sab log aa rahe hain, tu bhi aa raha hai na?',
      'text', 'normal', false, base_ts + interval '12 hours'),
 
-    -- BusyBot replies in matching Hinglish (Gemini detects language and mirrors it)
+    -- BusyBot replies in matching Hinglish (first message = self-introduction)
     (conv_hinglish, demo_user_id, 'bot',
-     'Haan bhai! 😄 Wo abhi thoda busy hai but kal ka plan toh pakka hai uska. Jaise hi free hoga confirm kar dega, don''t worry! 👍',
+     'Hey bhai! 😄 Main BusyBot hoon, uska personal assistant. Wo abhi thoda busy hai but kal ka plan toh pakka hai uska. Jaise hi free hoga confirm kar dega, don''t worry! 👍',
      'text', 'normal', true, base_ts + interval '12 hours 1 minute'),
 
     -- Rithesh sends another in pure Hindi
@@ -273,9 +273,9 @@ BEGIN
      '🎉 CONGRATULATIONS! You''ve been selected for an EXCLUSIVE offer! Get 90% off on premium health insurance. Reply YES to claim your offer NOW! Limited time only!! 🎁🎊',
      'text', 'normal', false, base_ts + interval '14 hours'),
 
-    -- BusyBot recognizes spam intent and sends polite but firm decline
+    -- BusyBot recognizes spam intent (first message = self-introduction + decline)
     (conv_spam, demo_user_id, 'bot',
-     'Hi, thanks for reaching out. He''s not interested in promotional offers at this time. Please remove this number from your marketing list. Thank you.',
+     'Hi, I''m BusyBot, his personal assistant. He''s not interested in promotional offers at this time. Please remove this number from your marketing list. Thank you.',
      'text', 'normal', true, base_ts + interval '14 hours 1 minute'),
 
     -- Spam follow-up
@@ -300,9 +300,9 @@ BEGIN
      'Hey! Have you finished the frontend part? Prof said final submission is this Friday. I''m done with the backend API and database. Need your screens to integrate.',
      'text', 'important', false, base_ts + interval '15 hours'),
 
-    -- BusyBot gives a helpful, structured reply
+    -- BusyBot gives a helpful, structured reply (first message = self-introduction)
     (conv_group_project, demo_user_id, 'bot',
-     'Hi Prasanna! 👋 He''s currently occupied but I know the frontend part has been in progress. Here''s what I can tell you:\n\n• He was last working on the dashboard and auth screens\n• He should be able to share an update once he''s free\n\nI''ll make sure he sees this about the Friday deadline — it''s flagged as important! He''ll coordinate with you soon for the integration. 📋',
+     'Hi Prasanna! 👋 I''m BusyBot, his personal assistant. He''s currently occupied but I know the frontend part has been in progress. Here''s what I can tell you:\n\n• He was last working on the dashboard and auth screens\n• He should be able to share an update once he''s free\n\nI''ll make sure he sees this about the Friday deadline — it''s flagged as important! He''ll coordinate with you soon for the integration. 📋',
      'text', 'important', true, base_ts + interval '15 hours 1 minute'),
 
     -- Prasanna shares more details
@@ -335,9 +335,9 @@ BEGIN
      'Hey chotu! 😄 Are you eating properly? Mom told me you''ve been skipping meals again. Please take care of yourself! 💕',
      'text', 'normal', false, base_ts + interval '17 hours'),
 
-    -- BusyBot replies warmly, matching family dynamics
+    -- BusyBot replies warmly (first message = self-introduction)
     (conv_family, demo_user_id, 'bot',
-     'Hii didi! 💕 He''s just busy with something right now, but don''t worry — I''ll make sure he sees your message! And yes, I''ll remind him about the meals too 😄🍽️ He''ll call you when he''s free!',
+     'Hii didi! 💕 I''m BusyBot, his personal assistant. He''s just busy with something right now, but don''t worry — I''ll make sure he sees your message! And yes, I''ll remind him about the meals too 😄🍽️ He''ll call you when he''s free!',
      'text', 'normal', true, base_ts + interval '17 hours 1 minute'),
 
     -- Sister sends a photo request
@@ -370,9 +370,9 @@ BEGIN
      'Hi! We''re facing an issue with the API integration. The authentication endpoint is returning 401 errors intermittently. Our team has checked the API keys and they seem correct. Can you look into this?',
      'text', 'important', false, base_ts + interval '19 hours'),
 
-    -- BusyBot gives a professional, empathetic, action-oriented reply
+    -- BusyBot gives a professional reply (first message = self-introduction)
     (conv_customer, demo_user_id, 'bot',
-     'Hi Rahul! Thank you for flagging this. I understand how disruptive intermittent 401 errors can be.\n\nHe''s currently in a session but I''ve marked this as high priority. In the meantime, a few quick things to check:\n\n1. Verify the token expiry — intermittent 401s often indicate token refresh issues\n2. Check if there are any rate limits being hit on the auth endpoint\n3. Review the server logs around the timestamps when the errors occur\n\nHe''ll get back to you with a detailed investigation shortly. 🔧',
+     'Hi Rahul! I''m BusyBot, his personal assistant. Thank you for flagging this — I understand how disruptive intermittent 401 errors can be.\n\nHe''s currently in a session but I''ve marked this as high priority. In the meantime, a few quick things to check:\n\n1. Verify the token expiry — intermittent 401s often indicate token refresh issues\n2. Check if there are any rate limits being hit on the auth endpoint\n3. Review the server logs around the timestamps when the errors occur\n\nHe''ll get back to you with a detailed investigation shortly. 🔧',
      'text', 'important', true, base_ts + interval '19 hours 1 minute'),
 
     -- Client provides more details

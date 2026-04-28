@@ -158,6 +158,59 @@ function applyAssistantDisclosure(reply: string, userDisplayName: string | null)
   return `${intro} ${reply}`.replace(/\s+/g, " ").trim();
 }
 
+function applyContactRule(reply: string, rule: any): string {
+  if (!rule) return reply;
+  let output = reply;
+  const maxWords = Number(rule.max_reply_words || 0);
+  if (maxWords > 4) output = trimToWordBudget(output, Math.min(maxWords, 80));
+
+  const emojiLevel = `${rule.emoji_level || "moderate"}`.toLowerCase();
+  if (emojiLevel === "none") {
+    output = output.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "").replace(/\s+/g, " ").trim();
+  } else if (emojiLevel === "low") {
+    const firstEmoji = output.match(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u)?.[0] || "";
+    output = output.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "").trim();
+    if (firstEmoji) output = `${output} ${firstEmoji}`.trim();
+  }
+  return output;
+}
+
+async function logReplyEvent(input: {
+  userId: string;
+  conversationId?: string;
+  messageId?: string;
+  stage: string;
+  status: string;
+  reason?: string;
+  riskLevel?: string;
+  confidenceScore?: number;
+  payload?: Record<string, unknown>;
+}) {
+  await supabase.from("reply_events").insert({
+    user_id: input.userId,
+    conversation_id: input.conversationId || null,
+    message_id: input.messageId || null,
+    stage: input.stage,
+    status: input.status,
+    reason: input.reason || null,
+    risk_level: input.riskLevel || null,
+    confidence_score: input.confidenceScore ?? null,
+    payload: input.payload || {},
+  });
+}
+
+function clampConfidence(value: number): number {
+  return Math.max(0.1, Math.min(0.99, Number(value.toFixed(3))));
+}
+
+function estimateConfidence(input: { intent: string; sentiment: string; policyAction: string; hasAi: boolean }): number {
+  let score = input.hasAi ? 0.82 : 0.66;
+  if (input.intent === "question" || input.intent === "request") score -= 0.04;
+  if (input.sentiment === "urgent" || input.policyAction === "review") score -= 0.16;
+  if (input.policyAction === "escalate" || input.policyAction === "skip") score -= 0.08;
+  return clampConfidence(score);
+}
+
 /* ──────────────────────────────────────────────────────────
    2. RELATIONSHIP INFERRER
    Guesses the relationship based on conversation patterns
@@ -924,6 +977,12 @@ serve(async (req) => {
         .eq("user_id", userId)
         .single();
       const userDisplayName = profile?.display_name || null;
+      const { data: contactRule } = await supabase
+        .from("contact_rules")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("contact_number", contactNumber)
+        .single();
 
       // Find or create conversation
       let { data: conversation } = await supabase
@@ -1031,6 +1090,15 @@ serve(async (req) => {
         message_type: messageType,
         urgency,
         is_auto_reply: false,
+        delivery_status: "received",
+      });
+      await logReplyEvent({
+        userId,
+        conversationId: conversation.id,
+        stage: "message_received",
+        status: "ok",
+        riskLevel: urgency === "emergency" ? "high" : "low",
+        payload: { intent: intentData.intent, sentiment: intentData.sentiment, text_preview: text.substring(0, 100) },
       });
 
       /* ═══ Auto-reply logic (only if busy_mode ON) ═══ */
@@ -1048,6 +1116,35 @@ serve(async (req) => {
       });
       const strictAssistantMode = settings.strict_assistant_mode !== false;
       const busyTestMode = settings.busy_test_mode === true;
+      const abuseCutoff = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+      const { count: recentBurstCount } = await supabase
+        .from("messages")
+        .select("id", { count: "exact", head: true })
+        .eq("conversation_id", conversation.id)
+        .eq("sender", "contact")
+        .gte("created_at", abuseCutoff);
+
+      if ((recentBurstCount || 0) > 20) {
+        await logReplyEvent({
+          userId,
+          conversationId: conversation.id,
+          stage: "rate_limit",
+          status: "blocked",
+          reason: "burst_protection",
+          riskLevel: "high",
+          payload: { recentBurstCount },
+        });
+        results.push({ user_id: userId, action: "blocked_abuse", reason: "burst_protection" });
+        continue;
+      }
+      await logReplyEvent({
+        userId,
+        conversationId: conversation.id,
+        stage: "policy_check",
+        status: policy.action,
+        reason: policy.reason,
+        riskLevel: policy.risk,
+      });
 
       if (policy.action === "skip") {
         results.push({ user_id: userId, action: "policy_skip", reason: policy.reason, risk: policy.risk });
@@ -1058,6 +1155,26 @@ serve(async (req) => {
         continue;
       }
       if (policy.action === "review") {
+        const draftForReview = `Thanks for your message. This needs direct review from ${userDisplayName || "the user"} before I can respond properly.`;
+        const reviewedDraft = applyAssistantDisclosure(draftForReview, userDisplayName);
+        await supabase.from("approval_queue").insert({
+          user_id: userId,
+          conversation_id: conversation.id,
+          contact_number: contactNumber,
+          incoming_message: text,
+          draft_reply: reviewedDraft,
+          risk_level: "high",
+          status: "pending",
+          review_note: policy.reason,
+        });
+        await logReplyEvent({
+          userId,
+          conversationId: conversation.id,
+          stage: "approval_queue",
+          status: "needs_review",
+          reason: policy.reason,
+          riskLevel: "high",
+        });
         results.push({ user_id: userId, action: "manual_review_required", reason: policy.reason, risk: policy.risk });
         continue;
       }
@@ -1223,8 +1340,25 @@ serve(async (req) => {
       }
 
       replyText = applyAssistantDisclosure(replyText, userDisplayName);
+      replyText = applyContactRule(replyText, contactRule);
+      const confidence = estimateConfidence({
+        intent: intentData.intent,
+        sentiment: intentData.sentiment,
+        policyAction: policy.action,
+        hasAi: providerUsed,
+      });
 
       if (busyTestMode) {
+        await logReplyEvent({
+          userId,
+          conversationId: conversation.id,
+          stage: "draft_generated",
+          status: "draft_only",
+          reason: "busy_test_mode",
+          riskLevel: policy.risk,
+          confidenceScore: confidence,
+          payload: { reply_preview: replyText.substring(0, 120) },
+        });
         results.push({
           user_id: userId,
           action: "test_mode_draft_only",
@@ -1252,6 +1386,19 @@ serve(async (req) => {
             message_type: "text",
             urgency: "normal",
             is_auto_reply: true,
+            delivery_status: "sent",
+            confidence_score: confidence,
+            policy_action: policy.action,
+            risk_level: policy.risk,
+            approval_status: "none",
+          });
+          await logReplyEvent({
+            userId,
+            conversationId: conversation.id,
+            stage: "delivery",
+            status: "sent",
+            riskLevel: policy.risk,
+            confidenceScore: confidence,
           });
           console.log(`Smart reply → ${contactNumber} [${intentData.intent}/${intentData.sentiment}/${relationship}]: "${replyText}"`);
           results.push({
@@ -1267,10 +1414,43 @@ serve(async (req) => {
         } else {
           const errText = await sendRes.text();
           console.error("Send failed:", sendRes.status, errText);
+          await supabase.from("messages").insert({
+            conversation_id: conversation.id,
+            user_id: userId,
+            sender: "bot",
+            content: replyText,
+            message_type: "text",
+            urgency: "normal",
+            is_auto_reply: true,
+            delivery_status: "failed",
+            delivery_error: errText.substring(0, 250),
+            confidence_score: confidence,
+            policy_action: policy.action,
+            risk_level: policy.risk,
+            approval_status: "none",
+          });
+          await logReplyEvent({
+            userId,
+            conversationId: conversation.id,
+            stage: "delivery",
+            status: "failed",
+            reason: errText.substring(0, 120),
+            riskLevel: policy.risk,
+            confidenceScore: confidence,
+          });
           results.push({ user_id: userId, action: "send_failed", provider_used: providerUsed, reply_preview: replyText.substring(0, 80), error: errText.substring(0, 100) });
         }
       } catch (sendErr) {
         console.error("Send error:", sendErr);
+        await logReplyEvent({
+          userId,
+          conversationId: conversation.id,
+          stage: "delivery",
+          status: "error",
+          reason: String(sendErr).substring(0, 120),
+          riskLevel: policy.risk,
+          confidenceScore: confidence,
+        });
         results.push({ user_id: userId, action: "send_error" });
       }
     } // end for-loop
