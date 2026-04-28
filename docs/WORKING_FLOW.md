@@ -54,9 +54,11 @@ Auto-reply runs only when settings.busy_mode is true.
 Decision gates:
 
 1. If busy_mode is false: store-only.
-2. If message does not need reply (ok/thanks/reaction/farewell): skip.
-3. If emergency and emergency_notify=true: skip.
-4. If a recent auto-reply exists in last 3 minutes: skip.
+2. Policy engine classifies action as reply/review/escalate/skip.
+3. If spam or no-reply message: skip.
+4. If emergency and emergency_notify=true: escalate to user and skip auto send.
+5. If high-stakes topic (financial/legal/medical/commitment): mark as manual review.
+6. If a recent auto-reply exists in last 3 minutes: skip.
 
 If all gates pass, generate a personalized assistant reply.
 
@@ -78,7 +80,9 @@ Primary path (OpenRouter by default, or custom provider):
    - relationship signal
    - recent context
 6. Call the configured provider using an OpenAI-compatible chat completions API.
-7. Validate response and clean output.
+7. If user provider key/model is missing, auto-fallback to OpenRouter secret model.
+8. Validate response and clean output.
+9. Strict assistant mode sanitizes unsafe commitment phrases.
 
 Fallback path (NLP templates):
 
@@ -86,6 +90,8 @@ Fallback path (NLP templates):
 - Only if personalized fallback cannot be built, use the older intent-aware fallback behavior.
 
 ## 8. Outbound Send and Store
+
+If busy_test_mode is enabled, BusyBot generates draft-only responses and does not send to WhatsApp.
 
 1. Send reply through Evolution sendText endpoint.
 2. On success, insert bot message with is_auto_reply=true.

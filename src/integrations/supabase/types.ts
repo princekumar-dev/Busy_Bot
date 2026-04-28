@@ -171,11 +171,13 @@ export type Database = {
           ai_provider: string
           ai_provider_name: string | null
           auto_reply_text: string | null
+          busy_test_mode: boolean
           busy_mode: boolean
           created_at: string
           emergency_notify: boolean
           gemini_api_key: string | null
           id: string
+          strict_assistant_mode: boolean
           updated_at: string
           user_id: string
           voice_reply_enabled: boolean
@@ -187,11 +189,13 @@ export type Database = {
           ai_provider?: string
           ai_provider_name?: string | null
           auto_reply_text?: string | null
+          busy_test_mode?: boolean
           busy_mode?: boolean
           created_at?: string
           emergency_notify?: boolean
           gemini_api_key?: string | null
           id?: string
+          strict_assistant_mode?: boolean
           updated_at?: string
           user_id: string
           voice_reply_enabled?: boolean
@@ -203,11 +207,13 @@ export type Database = {
           ai_provider?: string
           ai_provider_name?: string | null
           auto_reply_text?: string | null
+          busy_test_mode?: boolean
           busy_mode?: boolean
           created_at?: string
           emergency_notify?: boolean
           gemini_api_key?: string | null
           id?: string
+          strict_assistant_mode?: boolean
           updated_at?: string
           user_id?: string
           voice_reply_enabled?: boolean

@@ -28,6 +28,8 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [voiceReply, setVoiceReply] = useState(false);
   const [emergencyNotify, setEmergencyNotify] = useState(true);
+  const [strictAssistantMode, setStrictAssistantMode] = useState(true);
+  const [busyTestMode, setBusyTestMode] = useState(false);
   const [autoReplyText, setAutoReplyText] = useState("");
   const [aiProvider, setAiProvider] = useState<AIProvider>("openrouter");
   const [aiProviderName, setAiProviderName] = useState("");
@@ -49,6 +51,8 @@ export default function SettingsPage() {
         if (data) {
           setVoiceReply(data.voice_reply_enabled);
           setEmergencyNotify(data.emergency_notify);
+          setStrictAssistantMode((data as any).strict_assistant_mode ?? true);
+          setBusyTestMode((data as any).busy_test_mode ?? false);
           setAutoReplyText(data.auto_reply_text || "");
           setAiProvider(((data as any).ai_provider || "openrouter") as AIProvider);
           setAiProviderName((data as any).ai_provider_name || "");
@@ -131,6 +135,8 @@ export default function SettingsPage() {
           user_id: user.id,
           voice_reply_enabled: voiceReply,
           emergency_notify: emergencyNotify,
+          strict_assistant_mode: strictAssistantMode,
+          busy_test_mode: busyTestMode,
           auto_reply_text: autoReplyText,
           ai_provider: aiProvider,
           ai_provider_name: aiProvider === "custom" ? trimmedProviderName || null : "OpenRouter",
@@ -188,6 +194,34 @@ export default function SettingsPage() {
               <p className="text-xs text-muted-foreground">Convert text replies to voice messages</p>
             </div>
             <Switch checked={voiceReply} onCheckedChange={setVoiceReply} />
+          </div>
+        </div>
+
+        <div className="glass rounded-xl p-6">
+          <div className="mb-4 flex items-center gap-3">
+            <Bell className="h-4 w-4 text-primary" />
+            <h3 className="font-display text-base font-semibold text-foreground">Safety Guard</h3>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-foreground">Strict assistant mode</p>
+              <p className="text-xs text-muted-foreground">Prevents commitment/judgment replies and keeps responses assistant-safe</p>
+            </div>
+            <Switch checked={strictAssistantMode} onCheckedChange={setStrictAssistantMode} />
+          </div>
+        </div>
+
+        <div className="glass rounded-xl p-6">
+          <div className="mb-4 flex items-center gap-3">
+            <Settings className="h-4 w-4 text-primary" />
+            <h3 className="font-display text-base font-semibold text-foreground">Testing</h3>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-foreground">Busy mode test (shadow)</p>
+              <p className="text-xs text-muted-foreground">Generate drafts without sending to WhatsApp</p>
+            </div>
+            <Switch checked={busyTestMode} onCheckedChange={setBusyTestMode} />
           </div>
         </div>
 

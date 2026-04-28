@@ -5,6 +5,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const OPENROUTER_FALLBACK_API_KEY = Deno.env.get("OPENROUTER_FALLBACK_API_KEY") || "";
+const OPENROUTER_FALLBACK_MODEL = Deno.env.get("OPENROUTER_FALLBACK_MODEL") || "tencent/hy3-preview:free";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -237,9 +239,10 @@ function buildAIConfig(settings: any) {
   const baseUrl = typeof settings?.ai_base_url === "string" ? settings.ai_base_url.trim() : "";
   const providerName = typeof settings?.ai_provider_name === "string" ? settings.ai_provider_name.trim() : "";
 
-  if (!apiKey || !model) return null;
+  const resolvedApiKey = apiKey || OPENROUTER_FALLBACK_API_KEY;
+  const resolvedModel = model || OPENROUTER_FALLBACK_MODEL;
 
-  if (provider === "custom") {
+  if (provider === "custom" && apiKey && model) {
     const normalizedBase = baseUrl.replace(/\/$/, "");
     if (!normalizedBase) return null;
     const endpoint = normalizedBase.endsWith("/chat/completions")
@@ -250,7 +253,7 @@ function buildAIConfig(settings: any) {
       provider: "custom",
       providerName: providerName || "Custom",
       apiKey,
-      model,
+      model: resolvedModel,
       endpoint,
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -259,14 +262,16 @@ function buildAIConfig(settings: any) {
     };
   }
 
+  if (!resolvedApiKey || !resolvedModel) return null;
+
   return {
     provider: "openrouter",
-    providerName: "OpenRouter",
-    apiKey,
-    model,
+    providerName: apiKey ? "OpenRouter" : "OpenRouter (fallback)",
+    apiKey: resolvedApiKey,
+    model: resolvedModel,
     endpoint: "https://openrouter.ai/api/v1/chat/completions",
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${resolvedApiKey}`,
       "Content-Type": "application/json",
       "HTTP-Referer": Deno.env.get("VITE_SITE_URL") || Deno.env.get("SITE_URL") || SUPABASE_URL,
       "X-OpenRouter-Title": "BusyBot",

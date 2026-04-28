@@ -1,0 +1,3 @@
+ALTER TABLE public.settings
+  ADD COLUMN IF NOT EXISTS strict_assistant_mode BOOLEAN NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS busy_test_mode BOOLEAN NOT NULL DEFAULT false;

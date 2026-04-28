@@ -101,6 +101,8 @@ Set these in Supabase project secrets for Edge Functions:
 - EVO_API_URL
 - EVO_API_KEY
 - EVO_BOT_NAME
+- OPENROUTER_FALLBACK_API_KEY (optional, used when user did not set provider key)
+- OPENROUTER_FALLBACK_MODEL (optional, defaults to tencent/hy3-preview:free)
 
 Functions also use each user's gemini_api_key stored in public.settings.
 
