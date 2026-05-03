@@ -5,8 +5,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const OPENROUTER_FALLBACK_API_KEY = Deno.env.get("OPENROUTER_FALLBACK_API_KEY") || "";
-const OPENROUTER_FALLBACK_MODEL = Deno.env.get("OPENROUTER_FALLBACK_MODEL") || "tencent/hy3-preview:free";
+const API_AIRFORCE_API_KEY = Deno.env.get("API_AIRFORCE_API_KEY") || "sk-air-JT9fB48xGX17FCKCUgVu6OlId0dmtzxlB6ED10zutDDzc5ZfweuZLKYTMy7x5msP";
+const API_AIRFORCE_PROVIDER_NAME = Deno.env.get("API_AIRFORCE_PROVIDER_NAME") || "Claude";
+const API_AIRFORCE_MODEL = Deno.env.get("API_AIRFORCE_MODEL") || "llama-4-scout";
+const API_AIRFORCE_BASE_URL = Deno.env.get("API_AIRFORCE_BASE_URL") || "https://api.airforce/v1";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -73,6 +75,26 @@ function topMatches(messages: string[], pattern: RegExp, limit: number = 5): str
   }
 
   return uniqueStrings(matches, limit);
+}
+
+function extractConversationEndings(messages: string[], limit: number = 8): string[] {
+  return uniqueStrings(
+    messages
+      .map((message) => normalizeText(message))
+      .filter((message) => /^(hmm+|hm+|mm+|ok+|okay+|kk|k|seri|sari|theek|acha|accha|haan|ha|bye|ok\s?bye|tc|take care|later|gn|good\s?night)\s*[.!?]*$/i.test(message)),
+    limit
+  );
+}
+
+function extractTopicMemories(messages: string[], limit: number = 10): string[] {
+  const topicWords = /\b(project|progress|prototype|demo|feature|bug|task|deadline|client|lead|manager|status|update|work|deployment|deploy|release|issue|fix|build|completed|pending|stuck|blocked|testing)\b/i;
+  return uniqueStrings(
+    messages
+      .map((message) => normalizeText(message))
+      .filter((message) => topicWords.test(message))
+      .map((message) => message.length > 160 ? `${message.substring(0, 160).trim()}...` : message),
+    limit
+  );
 }
 
 function summarizeTone(messages: string[]): string {
@@ -174,6 +196,8 @@ function buildHeuristicGlobalStyle(userMessages: Array<{ content: string }>) {
     language_mix: languageSummary.mix,
     tone_summary: summarizeTone(texts),
     signature_phrases: signaturePhrases,
+    conversation_endings: extractConversationEndings(texts),
+    topic_memories: extractTopicMemories(texts),
     abbreviation_style: abbreviationPatterns.join(", "),
     code_switching_pattern: languageSummary.codeSwitching,
     analysis_mode: "heuristic",
@@ -226,55 +250,43 @@ function buildHeuristicContactStyle(contactName: string, messages: string[]) {
     language: languageSummary.mix,
     emoji_usage: emojiUsage,
     sample_replies: uniqueStrings([...cleaned].reverse(), 5),
+    closing_replies: extractConversationEndings(cleaned, 5),
+    topic_memory: extractTopicMemories(cleaned, 8),
     relationship_hint: inferHeuristicRelationship(contactName, cleaned),
     unique_patterns: uniquePatterns || "No strong contact-specific pattern detected yet",
     analysis_mode: "heuristic",
   };
 }
 
+function buildChatCompletionsEndpoint(baseUrl: string): string {
+  const normalizedBase = baseUrl.replace(/\/+$/, "");
+  if (normalizedBase.endsWith("/chat/completions")) return normalizedBase;
+  if (normalizedBase.endsWith("/v1")) return `${normalizedBase}/chat/completions`;
+  return `${normalizedBase}/v1/chat/completions`;
+}
+
 function buildAIConfig(settings: any) {
-  const provider = `${settings?.ai_provider || "openrouter"}`.trim().toLowerCase();
   const apiKey = typeof settings?.ai_api_key === "string" ? settings.ai_api_key.trim() : "";
   const model = typeof settings?.ai_model === "string" ? settings.ai_model.trim() : "";
   const baseUrl = typeof settings?.ai_base_url === "string" ? settings.ai_base_url.trim() : "";
-  const providerName = typeof settings?.ai_provider_name === "string" ? settings.ai_provider_name.trim() : "";
+  const providerName = typeof settings?.ai_provider_name === "string" && settings.ai_provider_name.trim()
+    ? settings.ai_provider_name.trim()
+    : API_AIRFORCE_PROVIDER_NAME;
 
-  const resolvedApiKey = apiKey || OPENROUTER_FALLBACK_API_KEY;
-  const resolvedModel = model || OPENROUTER_FALLBACK_MODEL;
-
-  if (provider === "custom" && apiKey && model) {
-    const normalizedBase = baseUrl.replace(/\/$/, "");
-    if (!normalizedBase) return null;
-    const endpoint = normalizedBase.endsWith("/chat/completions")
-      ? normalizedBase
-      : `${normalizedBase}/chat/completions`;
-
-    return {
-      provider: "custom",
-      providerName: providerName || "Custom",
-      apiKey,
-      model: resolvedModel,
-      endpoint,
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-    };
-  }
-
+  const resolvedApiKey = apiKey || API_AIRFORCE_API_KEY;
+  const resolvedModel = ["google/gemma-4-31b-it:free", "tencent/hy3-preview:free", "gpt-4o-mini", "claude-opus-4-6"].includes(model) ? API_AIRFORCE_MODEL : model || API_AIRFORCE_MODEL;
+  const resolvedBaseUrl = baseUrl || API_AIRFORCE_BASE_URL;
   if (!resolvedApiKey || !resolvedModel) return null;
 
   return {
-    provider: "openrouter",
-    providerName: apiKey ? "OpenRouter" : "OpenRouter (fallback)",
+    provider: "api_airforce",
+    providerName,
     apiKey: resolvedApiKey,
     model: resolvedModel,
-    endpoint: "https://openrouter.ai/api/v1/chat/completions",
+    endpoint: buildChatCompletionsEndpoint(resolvedBaseUrl),
     headers: {
       Authorization: `Bearer ${resolvedApiKey}`,
       "Content-Type": "application/json",
-      "HTTP-Referer": Deno.env.get("VITE_SITE_URL") || Deno.env.get("SITE_URL") || SUPABASE_URL,
-      "X-OpenRouter-Title": "BusyBot",
     },
   };
 }
@@ -301,6 +313,7 @@ async function callProviderText(prompt: string, aiConfig: any, retries: number =
           messages: [{ role: "user", content: prompt }],
           stream: false,
           temperature: 0.3,
+          reasoning: { exclude: true },
         }),
       });
 
@@ -414,6 +427,9 @@ serve(async (req) => {
     const globalPrompt = `Analyze these WhatsApp messages sent by ONE person. Extract their UNIQUE communication style and personality patterns.
 
 IMPORTANT: This person may use MULTIPLE LANGUAGES including English, Hindi, Tamil, Hinglish, Tanglish, and code-switching.
+Also extract:
+- "conversation_endings": exact short replies they use to close or acknowledge chats, like hmm/ok/bye/seri.
+- "topic_memories": factual project/work/status updates they have mentioned. Keep these short and factual; do not invent.
 
 MESSAGES (most recent first):
 ${allMessagesText}
@@ -432,6 +448,8 @@ Return ONLY valid JSON with:
   "language_mix": "",
   "tone_summary": "",
   "signature_phrases": [],
+  "conversation_endings": [],
+  "topic_memories": [],
   "abbreviation_style": "",
   "code_switching_pattern": ""
 }`;
@@ -449,6 +467,13 @@ Return ONLY valid JSON with:
         _fallback_reason: String(err).substring(0, 200),
       };
     }
+    const heuristicStyle = buildHeuristicGlobalStyle(userMessages);
+    learnedStyle.conversation_endings = Array.isArray(learnedStyle.conversation_endings) && learnedStyle.conversation_endings.length
+      ? learnedStyle.conversation_endings
+      : heuristicStyle.conversation_endings;
+    learnedStyle.topic_memories = Array.isArray(learnedStyle.topic_memories) && learnedStyle.topic_memories.length
+      ? learnedStyle.topic_memories
+      : heuristicStyle.topic_memories;
 
     const byConversation: Record<string, string[]> = {};
     for (const message of userMessages) {
@@ -489,7 +514,14 @@ Return ONLY valid JSON with:
         .limit(100);
 
       const pairs: string[] = [];
+      const allContactContext: string[] = [];
       if (contactMessages) {
+        for (const message of contactMessages) {
+          if (message.content && message.content !== "[media message]") {
+            allContactContext.push(`${message.sender === "user" ? "You" : "They"}: ${message.content}`);
+          }
+        }
+
         for (let i = 0; i < contactMessages.length - 1; i++) {
           if (contactMessages[i].sender === "contact" && contactMessages[i + 1]?.sender === "user") {
             pairs.push(`They: "${contactMessages[i].content}" -> You: "${contactMessages[i + 1].content}"`);
@@ -506,12 +538,16 @@ ${messages.slice(0, 50).join("\n")}
 
 ${pairs.length > 0 ? `CONVERSATION PAIRS:\n${pairs.slice(0, 20).join("\n")}` : ""}
 
-Return ONLY JSON:
+Return ONLY JSON. Include:
+- "closing_replies": exact short ways this user ends chats with this contact.
+- "topic_memory": factual project/work/status context discussed with this contact, especially progress, blockers, demos, deadlines, and current state.
 {
   "tone": "",
   "language": "",
   "emoji_usage": "",
   "sample_replies": [],
+  "closing_replies": [],
+  "topic_memory": [],
   "relationship_hint": "",
   "unique_patterns": ""
 }`;
@@ -529,6 +565,14 @@ Return ONLY JSON:
       } else {
         contactStyle = buildHeuristicContactStyle(contact.name, messages);
       }
+      const heuristicContactStyle = buildHeuristicContactStyle(contact.name, messages);
+      contactStyle.closing_replies = Array.isArray(contactStyle.closing_replies) && contactStyle.closing_replies.length
+        ? contactStyle.closing_replies
+        : heuristicContactStyle.closing_replies;
+      const contextTopicMemory = extractTopicMemories(allContactContext, 8);
+      contactStyle.topic_memory = Array.isArray(contactStyle.topic_memory) && contactStyle.topic_memory.length
+        ? contactStyle.topic_memory
+        : (contextTopicMemory.length ? contextTopicMemory : heuristicContactStyle.topic_memory);
 
       const contactKey = contact.name.toLowerCase().replace(/\s+/g, "_");
       perContact[contactKey] = {

@@ -8,18 +8,30 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
 
+const API_AIRFORCE_API_KEY = Deno.env.get("API_AIRFORCE_API_KEY") || "sk-air-JT9fB48xGX17FCKCUgVu6OlId0dmtzxlB6ED10zutDDzc5ZfweuZLKYTMy7x5msP";
+const API_AIRFORCE_BASE_URL = Deno.env.get("API_AIRFORCE_BASE_URL") || "https://api.airforce/v1";
+const API_AIRFORCE_MODEL = Deno.env.get("API_AIRFORCE_MODEL") || "llama-4-scout";
+
+function buildChatCompletionsEndpoint(baseUrl: string): string {
+  const normalizedBase = baseUrl.replace(/\/+$/, "");
+  if (normalizedBase.endsWith("/chat/completions")) return normalizedBase;
+  if (normalizedBase.endsWith("/v1")) return `${normalizedBase}/chat/completions`;
+  return `${normalizedBase}/v1/chat/completions`;
+}
+
 serve(async (req) => {
   const body = await req.json().catch(() => ({}));
   
-  // If action=test_gemini, test all users' Gemini keys
-  if (body.action === "test_gemini") {
+  if (body.action === "test_api_airforce") {
     const { data: allSettings } = await supabase
       .from("settings")
-      .select("user_id, gemini_api_key");
+      .select("user_id, ai_api_key, ai_model, ai_base_url");
     
     const results = [];
     for (const s of (allSettings || [])) {
-      const key = ((s as any).gemini_api_key || "").trim();
+      const key = ((s as any).ai_api_key || API_AIRFORCE_API_KEY).trim();
+      const model = ((s as any).ai_model || API_AIRFORCE_MODEL).trim();
+      const baseUrl = ((s as any).ai_base_url || API_AIRFORCE_BASE_URL).trim();
       const keyInfo = {
         user_id: s.user_id,
         has_key: !!key,
@@ -30,27 +42,20 @@ serve(async (req) => {
       
       if (key && key.length > 10) {
         try {
-          const res = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                contents: [{ parts: [{ text: "Reply with exactly: WORKING" }] }],
-                generationConfig: { temperature: 0, maxOutputTokens: 10 },
-                safetySettings: [
-                  { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
-                  { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
-                  { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
-                  { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" },
-                ],
-              }),
-            }
-          );
+          const res = await fetch(buildChatCompletionsEndpoint(baseUrl), {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+            body: JSON.stringify({
+              model,
+              messages: [{ role: "user", content: "Reply with exactly: WORKING" }],
+              max_tokens: 10,
+              temperature: 0,
+            }),
+          });
           
           if (res.ok) {
             const data = await res.json();
-            const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+            const reply = data?.choices?.[0]?.message?.content?.trim() || "";
             keyInfo.test_result = `✅ OK: "${reply}"`;
           } else {
             const err = await res.text();
@@ -63,22 +68,21 @@ serve(async (req) => {
       results.push(keyInfo);
     }
     
-    return new Response(JSON.stringify({ gemini_key_tests: results }, null, 2), {
+    return new Response(JSON.stringify({ api_airforce_key_tests: results }, null, 2), {
       headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
     });
   }
 
-  // Default: show all data including gemini key status  
-  const { data: settings } = await supabase.from("settings").select("user_id, busy_mode, auto_reply_text, gemini_api_key").limit(5);
+  const { data: settings } = await supabase.from("settings").select("user_id, busy_mode, auto_reply_text, ai_provider, ai_api_key, ai_model, ai_base_url").limit(5);
   const { data: convos } = await supabase.from("conversations").select("id, user_id, contact_name, contact_number, unread_count").limit(10);
   const { data: msgs } = await supabase.from("messages").select("id, conversation_id, sender, content").limit(10);
   const { data: authUsers } = await supabase.auth.admin.listUsers({ perPage: 5 });
 
-  // Mask the gemini keys but show if they exist and their length
+  // Mask the AI keys but show if they exist and their length.
   const maskedSettings = (settings || []).map(s => ({
     ...s,
-    gemini_api_key: (s as any).gemini_api_key 
-      ? `${((s as any).gemini_api_key as string).substring(0, 8)}...(${((s as any).gemini_api_key as string).length} chars)` 
+    ai_api_key: (s as any).ai_api_key 
+      ? `${((s as any).ai_api_key as string).substring(0, 8)}...(${((s as any).ai_api_key as string).length} chars)` 
       : "NOT SET",
   }));
 

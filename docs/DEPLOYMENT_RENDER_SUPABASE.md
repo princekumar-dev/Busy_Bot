@@ -73,7 +73,7 @@ Deploy frontend build.
 Per user:
 
 1. Open Settings.
-2. Set Gemini API key.
+2. Set the API Airforce API key.
 3. Optionally customize fallback auto-reply text.
 4. Turn Busy Mode ON from Dashboard.
 
@@ -89,11 +89,11 @@ Checklist:
 
 ## 7. Common Production Pitfalls
 
-1. Missing gemini_api_key in settings table for that user.
+1. Missing ai_api_key or API_AIRFORCE_API_KEY for that user.
 2. Evolution URL mismatch between frontend and function secrets.
 3. Missing trailing route segment in webhook URL.
-4. Not applying latest migration that adds learned_style and gemini_api_key columns.
-5. Rate-limited Gemini key causing fallback replies.
+4. Not applying latest migration that adds learned_style and AI provider columns.
+5. Rate-limited API Airforce key causing local backup replies.
 
 ## 8. Security Recommendations
 

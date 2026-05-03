@@ -20,6 +20,18 @@ const STEPS = [
 
 interface Props { open: boolean; onComplete: () => void; }
 
+const AI_PROVIDER = "api_airforce";
+const DEFAULT_API_AIRFORCE_API_KEY = "sk-air-JT9fB48xGX17FCKCUgVu6OlId0dmtzxlB6ED10zutDDzc5ZfweuZLKYTMy7x5msP";
+const DEFAULT_API_AIRFORCE_PROVIDER_NAME = "Claude";
+const DEFAULT_API_AIRFORCE_MODEL = "llama-4-scout";
+const DEFAULT_API_AIRFORCE_BASE_URL = "https://api.airforce/v1";
+
+function extractMissingSettingsColumn(message?: string): string | null {
+  const text = `${message || ""}`;
+  const match = text.match(/Could not find the '([^']+)' column of 'settings'/i);
+  return match?.[1] || null;
+}
+
 export function OnboardingWizard({ open, onComplete }: Props) {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -27,8 +39,9 @@ export function OnboardingWizard({ open, onComplete }: Props) {
   const [saving, setSaving] = useState(false);
 
   // AI provider state
-  const [aiApiKey, setAiApiKey] = useState("");
-  const [aiModel, setAiModel] = useState("google/gemma-4-31b-it:free");
+  const [aiApiKey, setAiApiKey] = useState(DEFAULT_API_AIRFORCE_API_KEY);
+  const [aiModel, setAiModel] = useState(DEFAULT_API_AIRFORCE_MODEL);
+  const [aiBaseUrl, setAiBaseUrl] = useState(DEFAULT_API_AIRFORCE_BASE_URL);
 
   // Style state
   const [tone, setTone] = useState("friendly");
@@ -42,18 +55,53 @@ export function OnboardingWizard({ open, onComplete }: Props) {
     if (!user) return;
     setSaving(true);
 
-    // Upsert settings
-    await supabase.from("settings").upsert({
-      user_id: user.id,
-      ai_provider: "openrouter",
-      ai_api_key: aiApiKey.trim() || null,
-      ai_model: aiModel.trim() || "google/gemma-4-31b-it:free",
+    // Save settings in a way that works even if ON CONFLICT(user_id) is not available.
+    const settingsPayload = {
+      ai_provider: AI_PROVIDER,
+      ai_provider_name: DEFAULT_API_AIRFORCE_PROVIDER_NAME,
+      ai_api_key: aiApiKey.trim() || DEFAULT_API_AIRFORCE_API_KEY,
+      ai_model: aiModel.trim() || DEFAULT_API_AIRFORCE_MODEL,
+      ai_base_url: aiBaseUrl.trim() || DEFAULT_API_AIRFORCE_BASE_URL,
       busy_mode: false,
       busy_test_mode: false,
       emergency_notify: true,
       strict_assistant_mode: true,
       voice_reply_enabled: false,
-    } as any, { onConflict: "user_id" });
+    } as any;
+
+    const { data: existingSettings } = await supabase
+      .from("settings")
+      .select("id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    const payloadForSave = { ...settingsPayload } as Record<string, any>;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      let saveError: any = null;
+
+      if (existingSettings?.id) {
+        const { error: updateError } = await supabase
+          .from("settings")
+          .update(payloadForSave)
+          .eq("user_id", user.id);
+        saveError = updateError;
+      } else {
+        const { error: insertError } = await supabase
+          .from("settings")
+          .insert({ user_id: user.id, ...payloadForSave } as any);
+        saveError = insertError;
+      }
+
+      if (!saveError) break;
+
+      const missingColumn = extractMissingSettingsColumn(saveError?.message);
+      if (missingColumn && Object.prototype.hasOwnProperty.call(payloadForSave, missingColumn)) {
+        delete payloadForSave[missingColumn];
+        continue;
+      }
+
+      throw saveError;
+    }
 
     // Upsert personality
     const avgLen = replyLength === "short" ? 12 : replyLength === "long" ? 40 : 24;
@@ -129,13 +177,17 @@ export function OnboardingWizard({ open, onComplete }: Props) {
           {step === 2 && (
             <div className="space-y-4 py-4 animate-slide-up">
               <div className="space-y-2">
-                <Label className="text-sm text-foreground">OpenRouter API Key</Label>
-                <Input className="border-border bg-secondary/50" placeholder="sk-or-v1-... (optional)" value={aiApiKey} onChange={e => setAiApiKey(e.target.value)} />
-                <p className="text-[10px] text-muted-foreground">Free tier available — leave blank to use fallback mode</p>
+                <Label className="text-sm text-foreground">API Airforce API Key</Label>
+                <Input className="border-border bg-secondary/50" placeholder="Paste your API Airforce API key" value={aiApiKey} onChange={e => setAiApiKey(e.target.value)} />
+                <p className="text-[10px] text-muted-foreground">Used as BusyBot's only LLM provider</p>
               </div>
               <div className="space-y-2">
                 <Label className="text-sm text-foreground">Model</Label>
-                <Input className="border-border bg-secondary/50" placeholder="google/gemma-4-31b-it:free" value={aiModel} onChange={e => setAiModel(e.target.value)} />
+                <Input className="border-border bg-secondary/50" placeholder={DEFAULT_API_AIRFORCE_MODEL} value={aiModel} onChange={e => setAiModel(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm text-foreground">Base URL</Label>
+                <Input className="border-border bg-secondary/50" placeholder={DEFAULT_API_AIRFORCE_BASE_URL} value={aiBaseUrl} onChange={e => setAiBaseUrl(e.target.value)} />
               </div>
             </div>
           )}

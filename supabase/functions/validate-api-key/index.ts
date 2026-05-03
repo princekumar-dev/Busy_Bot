@@ -8,6 +8,17 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+const DEFAULT_API_AIRFORCE_API_KEY = Deno.env.get("API_AIRFORCE_API_KEY") || "sk-air-JT9fB48xGX17FCKCUgVu6OlId0dmtzxlB6ED10zutDDzc5ZfweuZLKYTMy7x5msP";
+const DEFAULT_API_AIRFORCE_BASE_URL = Deno.env.get("API_AIRFORCE_BASE_URL") || "https://api.airforce/v1";
+const DEFAULT_API_AIRFORCE_MODEL = Deno.env.get("API_AIRFORCE_MODEL") || "llama-4-scout";
+
+function buildChatCompletionsEndpoint(baseUrl: string): string {
+  const normalizedBase = baseUrl.replace(/\/+$/, "");
+  if (normalizedBase.endsWith("/chat/completions")) return normalizedBase;
+  if (normalizedBase.endsWith("/v1")) return `${normalizedBase}/chat/completions`;
+  return `${normalizedBase}/v1/chat/completions`;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -32,33 +43,16 @@ serve(async (req) => {
       }
     }
 
-    if (provider === "openrouter") {
-      const url = "https://api.openrouter.ai/v1/models";
-      const resp = await probe(url, { headers: { Authorization: `Bearer ${api_key}` } });
-      if (resp.status === 401 || resp.status === 403) {
-        return new Response(JSON.stringify({ result: "invalid", status: resp.status }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-      if (resp.ok) return new Response(JSON.stringify({ result: "valid" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      return new Response(JSON.stringify({ result: "inconclusive", status: resp.status, detail: resp.text }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
-    if (provider === "custom") {
-      const base = (base_url || "").replace(/\/+$/, "");
+    if (provider === "api_airforce") {
+      const base = (base_url || DEFAULT_API_AIRFORCE_BASE_URL).replace(/\/+$/, "");
       if (!base) {
         return new Response(JSON.stringify({ result: "inconclusive", reason: "missing base_url" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
-      // Try /v1/models
-      const modelsUrl = `${base}/v1/models`;
-      const r1 = await probe(modelsUrl, { headers: { Authorization: `Bearer ${api_key}` } });
-      if (r1.status === 401 || r1.status === 403) {
-        return new Response(JSON.stringify({ result: "invalid", status: r1.status }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-      if (r1.ok) return new Response(JSON.stringify({ result: "valid" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-
-      // Fallback: try minimal chat/completions
-      const chatUrl = `${base}/v1/chat/completions`;
-      const r2 = await probe(chatUrl, { method: "POST", headers: { Authorization: `Bearer ${api_key}`, "Content-Type": "application/json" }, body: JSON.stringify({ model: model || "gpt-4o-mini", messages: [{ role: "user", content: "hi" }], max_tokens: 1 }) });
+      const chatUrl = buildChatCompletionsEndpoint(base);
+      const chatHeaders: Record<string, string> = { "Content-Type": "application/json" };
+      chatHeaders.Authorization = `Bearer ${api_key || DEFAULT_API_AIRFORCE_API_KEY}`;
+      const r2 = await probe(chatUrl, { method: "POST", headers: chatHeaders, body: JSON.stringify({ model: model || DEFAULT_API_AIRFORCE_MODEL, messages: [{ role: "user", content: "hi" }], max_tokens: 1 }) });
       if (r2.status === 401 || r2.status === 403) {
         return new Response(JSON.stringify({ result: "invalid", status: r2.status }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }

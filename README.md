@@ -5,7 +5,7 @@ BusyBot is a full-stack WhatsApp auto-reply assistant that:
 - connects to WhatsApp through Evolution API,
 - stores conversations in Supabase Postgres,
 - learns your message style from your own outgoing chats,
-- generates context-aware replies with Gemini when Busy Mode is ON.
+- generates context-aware replies with API Airforce when Busy Mode is ON.
 
 This repository contains:
 
@@ -19,7 +19,7 @@ This repository contains:
 - Dashboard, Conversations, Personality Training, Analytics, Settings pages
 - Real-time UI updates using Supabase Realtime
 - Smart auto-reply pipeline with intent/sentiment/language detection
-- Fallback NLP replies when Gemini is unavailable
+- Local contextual backup replies when API Airforce is unavailable
 - Evolution API QR onboarding and webhook registration
 
 ## High-Level Architecture
@@ -42,7 +42,7 @@ Supabase (backend)
           v
 External services
   - Evolution API (often hosted on Render)
-  - Google Gemini API
+  - API Airforce
 ```
 
 Detailed architecture: see docs/ARCHITECTURE.md.
@@ -55,7 +55,7 @@ Detailed architecture: see docs/ARCHITECTURE.md.
 4. If the message is from the user (fromMe=true), it is treated as training data.
 5. If the message is incoming and Busy Mode is ON, webhook decides whether to auto-reply.
 6. webhook generates reply:
-   - Gemini-based personalized reply when gemini_api_key is available and valid.
+   - API Airforce personalized reply when ai_api_key or API_AIRFORCE_API_KEY is available and valid.
    - NLP contextual fallback reply otherwise.
 7. webhook sends the reply through Evolution API sendText endpoint.
 8. Reply is stored in messages table as bot + is_auto_reply=true.
@@ -67,7 +67,7 @@ End-to-end flow doc: see docs/WORKING_FLOW.md.
 
 - Frontend: React 18, TypeScript, Vite, Tailwind CSS, shadcn/ui, TanStack Query, Recharts
 - Backend: Supabase (Postgres, Auth, Realtime, Edge Functions)
-- AI: Gemini 2.0 Flash
+- AI: API Airforce
 - WhatsApp integration: Evolution API v2
 - Typical deployment: Vercel (frontend) + Supabase + Render (Evolution API)
 
@@ -101,10 +101,12 @@ Set these in Supabase project secrets for Edge Functions:
 - EVO_API_URL
 - EVO_API_KEY
 - EVO_BOT_NAME
-- OPENROUTER_FALLBACK_API_KEY (optional, used when user did not set provider key)
-- OPENROUTER_FALLBACK_MODEL (optional, defaults to tencent/hy3-preview:free)
+- API_AIRFORCE_API_KEY
+- API_AIRFORCE_PROVIDER_NAME (optional, defaults to Claude)
+- API_AIRFORCE_MODEL (optional, defaults to llama-4-scout)
+- API_AIRFORCE_BASE_URL (optional, defaults to https://api.airforce/v1)
 
-Functions also use each user's gemini_api_key stored in public.settings.
+Functions use each user's ai_api_key stored in public.settings, or the API_AIRFORCE_API_KEY function secret.
 
 ## Local Development
 

@@ -66,6 +66,8 @@ export function EvoQRConnector() {
                         url: WEBHOOK_URL,
                         webhookByEvents: false,
                         webhookBase64: false,
+                        webhook_by_events: false,
+                        webhook_base64: false,
                         events: [
                             "MESSAGES_UPSERT",
                             "CONNECTION_UPDATE",
@@ -353,6 +355,8 @@ export function EvoQRConnector() {
                                 enabled: true,
                                 webhookByEvents: false,
                                 webhookBase64: false,
+                                webhook_by_events: false,
+                                webhook_base64: false,
                                 events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE"],
                             },
                         }),

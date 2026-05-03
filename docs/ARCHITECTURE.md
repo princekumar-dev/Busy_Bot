@@ -6,7 +6,7 @@ BusyBot is split into three major runtime zones:
 
 1. Frontend app (React + Vite)
 2. Supabase backend (Postgres + Auth + Edge Functions + Realtime)
-3. External integrations (Evolution API and Gemini)
+3. External integrations (Evolution API and API Airforce)
 
 ```text
 +---------------------------+       +----------------------------+
@@ -32,8 +32,8 @@ BusyBot is split into three major runtime zones:
               | outbound HTTP
               v
      +--------+----------------+
-     | Gemini API (Google)     |
-     | - generateContent model |
+     | API Airforce            |
+     | - chat completions      |
      +-------------------------+
 ```
 
@@ -95,7 +95,7 @@ personality_profiles
 settings
 
 - busy_mode, emergency_notify, voice_reply_enabled, auto_reply_text.
-- gemini_api_key per user.
+- ai_api_key, ai_model, ai_base_url, and ai_provider_name for API Airforce.
 
 conversations
 
@@ -126,8 +126,8 @@ Responsibilities:
 - Creates/updates conversations and messages.
 - Runs intent/sentiment/language classification.
 - Applies auto-reply decision rules.
-- Calls Gemini for personalized output (when available).
-- Uses NLP fallback templates if Gemini fails.
+- Calls API Airforce for personalized output (when available).
+- Uses local contextual backup replies if API Airforce fails.
 - Sends outgoing replies via Evolution API sendText.
 - Triggers retraining after enough new user messages.
 
@@ -136,7 +136,7 @@ train-personality
 Responsibilities:
 
 - Reads user's outgoing messages.
-- Runs Gemini JSON analysis for:
+- Runs API Airforce JSON analysis for:
   - global writing style
   - per-contact style patterns
 - Writes learned_style JSON and derived profile fields.
@@ -155,7 +155,7 @@ Evolution API
 - Sends inbound events to webhook endpoint.
 - Accepts outbound sendText calls from webhook function.
 
-Gemini API
+API Airforce
 
 - Produces personalized replies.
 - Produces structured style analysis during training.
@@ -173,4 +173,4 @@ Frontend subscribes to Postgres changes for near-live UX:
 - Busy Mode is checked per user in settings table.
 - Duplicate auto-reply cooldown is enforced per conversation (~3 minutes).
 - Emergency messages can bypass auto-replies when emergency_notify is enabled.
-- If Gemini is unavailable or key is invalid, webhook falls back to contextual non-AI reply logic.
+- If API Airforce is unavailable or key is invalid, webhook uses contextual local reply logic.

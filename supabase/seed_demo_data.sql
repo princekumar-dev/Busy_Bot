@@ -3,7 +3,7 @@
 -- =============================================================================
 -- This script inserts realistic demo conversations and BusyBot auto-replies
 -- to showcase how BusyBot handles different types of WhatsApp messages using
--- the Gemini LLM. It covers:
+-- the configured LLM. It covers:
 --
 --   1. Casual friend chat         — Informal tone, emoji-heavy replies
 --   2. Professional/work chat     — Formal tone, meeting-aware replies
@@ -407,7 +407,7 @@ BEGIN
   RAISE NOTICE '   8. 🏪 Client Support (Rahul) — professional, action-oriented';
   RAISE NOTICE '────────────────────────────────────────';
   RAISE NOTICE '💬 Total messages: 30 (contacts + bot auto-replies + user replies)';
-  RAISE NOTICE '🤖 BusyBot auto-replies: 14 (Gemini LLM generated)';
+  RAISE NOTICE '🤖 BusyBot auto-replies: 14 (LLM generated)';
   RAISE NOTICE '👤 User manual replies: 5';
   RAISE NOTICE '📩 Contact messages: 16';
 

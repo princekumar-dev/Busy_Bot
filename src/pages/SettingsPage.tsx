@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { EvoQRConnector } from "@/components/EvoQRConnector";
 import {
   Select,
   SelectContent,
@@ -16,10 +15,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { EvoQRConnector } from "@/components/EvoQRConnector";
+const AI_PROVIDER = "api_airforce";
+const AI_PROVIDER_LABEL = "API Airforce";
+const DEFAULT_API_AIRFORCE_API_KEY = "sk-air-JT9fB48xGX17FCKCUgVu6OlId0dmtzxlB6ED10zutDDzc5ZfweuZLKYTMy7x5msP";
+const DEFAULT_API_AIRFORCE_PROVIDER_NAME = "Claude";
+const DEFAULT_API_AIRFORCE_MODEL = "llama-4-scout";
+const DEFAULT_API_AIRFORCE_BASE_URL = "https://api.airforce/v1";
+const LEGACY_PROVIDER_MODELS = new Set(["google/gemma-4-31b-it:free", "tencent/hy3-preview:free"]);
 
-type AIProvider = "openrouter" | "custom";
+const QUICK_MODELS = [
+  { id: "llama-4-scout", label: "Llama 4 Scout", model: "llama-4-scout", provider: "Llama", baseUrl: "https://api.airforce/v1" },
+  { id: "gpt-4o-mini", label: "GPT-4o Mini", model: "gpt-4o-mini", provider: "OpenAI", baseUrl: "https://api.airforce/v1" },
+  { id: "deepseek-chat", label: "DeepSeek Chat", model: "deepseek-chat", provider: "DeepSeek", baseUrl: "https://api.airforce/v1" },
+  { id: "mistral-large", label: "Mistral Large", model: "mistral-large", provider: "Mistral", baseUrl: "https://api.airforce/v1" },
+];
 
-const DEFAULT_OPENROUTER_MODEL = "google/gemma-4-31b-it:free";
+
+
+function extractMissingSettingsColumn(message?: string): string | null {
+  const text = `${message || ""}`;
+  const match = text.match(/Could not find the '([^']+)' column of 'settings'/i);
+  return match?.[1] || null;
+}
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -31,11 +49,10 @@ export default function SettingsPage() {
   const [strictAssistantMode, setStrictAssistantMode] = useState(true);
   const [busyTestMode, setBusyTestMode] = useState(false);
   const [autoReplyText, setAutoReplyText] = useState("");
-  const [aiProvider, setAiProvider] = useState<AIProvider>("openrouter");
-  const [aiProviderName, setAiProviderName] = useState("");
-  const [aiApiKey, setAiApiKey] = useState("");
-  const [aiModel, setAiModel] = useState(DEFAULT_OPENROUTER_MODEL);
-  const [aiBaseUrl, setAiBaseUrl] = useState("");
+  const [aiProviderName, setAiProviderName] = useState(DEFAULT_API_AIRFORCE_PROVIDER_NAME);
+  const [aiApiKey, setAiApiKey] = useState(DEFAULT_API_AIRFORCE_API_KEY);
+  const [aiModel, setAiModel] = useState(DEFAULT_API_AIRFORCE_MODEL);
+  const [aiBaseUrl, setAiBaseUrl] = useState(DEFAULT_API_AIRFORCE_BASE_URL);
   const [showAiKey, setShowAiKey] = useState(false);
   const [apiValidation, setApiValidation] = useState<'unknown' | 'valid' | 'invalid' | 'inconclusive'>('unknown');
 
@@ -54,11 +71,11 @@ export default function SettingsPage() {
           setStrictAssistantMode((data as any).strict_assistant_mode ?? true);
           setBusyTestMode((data as any).busy_test_mode ?? false);
           setAutoReplyText(data.auto_reply_text || "");
-          setAiProvider(((data as any).ai_provider || "openrouter") as AIProvider);
-          setAiProviderName((data as any).ai_provider_name || "");
-          setAiApiKey((data as any).ai_api_key || (data as any).gemini_api_key || "");
-          setAiModel((data as any).ai_model || DEFAULT_OPENROUTER_MODEL);
-          setAiBaseUrl((data as any).ai_base_url || "");
+          setAiProviderName((data as any).ai_provider_name || DEFAULT_API_AIRFORCE_PROVIDER_NAME);
+          setAiApiKey((data as any).ai_api_key || DEFAULT_API_AIRFORCE_API_KEY);
+          const savedModel = (data as any).ai_model;
+          setAiModel(savedModel || DEFAULT_API_AIRFORCE_MODEL);
+          setAiBaseUrl((data as any).ai_base_url || DEFAULT_API_AIRFORCE_BASE_URL);
         }
         setLoading(false);
       });
@@ -76,17 +93,7 @@ export default function SettingsPage() {
     if (trimmedApiKey && !trimmedModel) {
       toast({
         title: "Model required",
-        description: "Enter the exact model name you want BusyBot to use, or clear the API key to stay on offline fallback mode.",
-        variant: "destructive",
-      });
-      setSaving(false);
-      return;
-    }
-
-    if (aiProvider === "custom" && trimmedApiKey && !trimmedBaseUrl) {
-      toast({
-        title: "Base URL required",
-        description: "Custom providers need a base URL so BusyBot knows where to send the request.",
+        description: "Enter the exact API Airforce model name you want BusyBot to use.",
         variant: "destructive",
       });
       setSaving(false);
@@ -102,7 +109,7 @@ export default function SettingsPage() {
         const res = await fetch(`${supaUrl.replace(/\/+$/,'')}/functions/v1/validate-api-key`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ provider: aiProvider, api_key: trimmedApiKey, base_url: trimmedBaseUrl, model: trimmedModel }),
+          body: JSON.stringify({ provider: AI_PROVIDER, api_key: trimmedApiKey, base_url: trimmedBaseUrl, model: trimmedModel }),
         });
         if (!res.ok) return 'inconclusive';
         const body = await res.json();
@@ -123,33 +130,63 @@ export default function SettingsPage() {
     }
     if (validation === 'inconclusive' && trimmedApiKey) {
       setApiValidation('inconclusive');
-      toast({ title: 'Key validation inconclusive', description: "Unable to verify the API key due to network/provider response. The key will still be saved.", variant: 'warning' });
+      toast({ title: 'Key validation inconclusive', description: "Unable to verify the API key due to network/provider response. The key will still be saved." });
     } else if (validation === 'valid') {
       setApiValidation('valid');
     }
 
-    const { error } = await supabase
-      .from("settings")
-      .upsert(
-        {
-          user_id: user.id,
-          voice_reply_enabled: voiceReply,
-          emergency_notify: emergencyNotify,
-          strict_assistant_mode: strictAssistantMode,
-          busy_test_mode: busyTestMode,
-          auto_reply_text: autoReplyText,
-          ai_provider: aiProvider,
-          ai_provider_name: aiProvider === "custom" ? trimmedProviderName || null : "OpenRouter",
-          ai_api_key: trimmedApiKey || null,
-          ai_model: trimmedModel || null,
-          ai_base_url: aiProvider === "custom" ? trimmedBaseUrl || null : null,
-          gemini_api_key: null,
-        } as any,
-        { onConflict: "user_id" }
-      );
+    const settingsPayload = {
+      voice_reply_enabled: voiceReply,
+      emergency_notify: emergencyNotify,
+      strict_assistant_mode: strictAssistantMode,
+      busy_test_mode: busyTestMode,
+      auto_reply_text: autoReplyText,
+      ai_provider: AI_PROVIDER,
+      ai_provider_name: trimmedProviderName || DEFAULT_API_AIRFORCE_PROVIDER_NAME,
+      ai_api_key: trimmedApiKey || DEFAULT_API_AIRFORCE_API_KEY,
+      ai_model: trimmedModel || DEFAULT_API_AIRFORCE_MODEL,
+      ai_base_url: trimmedBaseUrl || DEFAULT_API_AIRFORCE_BASE_URL,
+    } as any;
 
-    if (error) {
-      toast({ title: "Error", description: "Failed to save settings", variant: "destructive" });
+    const { data: existingSettings, error: findError } = await supabase
+      .from("settings")
+      .select("id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    let saveError = findError;
+    if (!saveError) {
+      const payloadForSave = { ...settingsPayload } as Record<string, any>;
+
+      for (let attempt = 0; attempt < 6; attempt++) {
+        if (existingSettings?.id) {
+          const { error: updateError } = await supabase
+            .from("settings")
+            .update(payloadForSave)
+            .eq("user_id", user.id);
+          saveError = updateError;
+        } else {
+          const { error: insertError } = await supabase
+            .from("settings")
+            .insert({ user_id: user.id, ...payloadForSave } as any);
+          saveError = insertError;
+        }
+
+        if (!saveError) break;
+
+        const missingColumn = extractMissingSettingsColumn((saveError as any)?.message);
+        if (missingColumn && Object.prototype.hasOwnProperty.call(payloadForSave, missingColumn)) {
+          delete payloadForSave[missingColumn];
+          continue;
+        }
+
+        break;
+      }
+    }
+
+    if (saveError) {
+      const details = `${(saveError as any)?.message || "unknown error"}`;
+      toast({ title: "Error", description: `Failed to save settings: ${details}`, variant: "destructive" });
     } else {
       toast({ title: "Saved", description: "Settings updated" });
     }
@@ -158,11 +195,9 @@ export default function SettingsPage() {
 
   if (loading) return <div className="h-96 animate-pulse rounded-xl bg-secondary" />;
 
-  const isCustomProvider = aiProvider === "custom";
-  const providerLabel = isCustomProvider ? aiProviderName.trim() || "Custom provider" : "OpenRouter";
-  const providerReady = isCustomProvider
-    ? !!aiApiKey.trim() && !!aiModel.trim() && !!aiBaseUrl.trim()
-    : !!aiApiKey.trim() && !!aiModel.trim();
+  const providerLabel = aiProviderName.trim() || DEFAULT_API_AIRFORCE_PROVIDER_NAME;
+  const hasStoredOrEnteredModel = !!aiModel.trim();
+  const providerReady = hasStoredOrEnteredModel;
 
   return (
     <div className="animate-slide-up max-w-2xl">
@@ -248,47 +283,31 @@ export default function SettingsPage() {
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label className="font-display text-sm text-foreground">Provider</Label>
-              <Select
-                value={aiProvider}
-                onValueChange={(value: AIProvider) => {
-                  setAiProvider(value);
-                  setApiValidation('unknown');
-                }}
-              >
-                <SelectTrigger className="border-border bg-secondary/50">
-                  <SelectValue placeholder="Select provider" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="openrouter">OpenRouter (Default)</SelectItem>
-                  <SelectItem value="custom">Custom Provider</SelectItem>
-                </SelectContent>
-              </Select>
+              <Input className="border-border bg-secondary/50" value={AI_PROVIDER_LABEL} readOnly />
             </div>
 
-            {isCustomProvider && (
-              <div className="space-y-2">
-                <Label className="font-display text-sm text-foreground">Provider Name</Label>
-                <Input
-                  className="border-border bg-secondary/50"
-                  placeholder="My provider"
-                  value={aiProviderName}
-                  onChange={(e) => {
-                    setAiProviderName(e.target.value);
-                    setApiValidation('unknown');
-                  }}
-                />
-              </div>
-            )}
+            <div className="space-y-2">
+              <Label className="font-display text-sm text-foreground">Provider Name</Label>
+              <Input
+                className="border-border bg-secondary/50"
+                placeholder={DEFAULT_API_AIRFORCE_PROVIDER_NAME}
+                value={aiProviderName}
+                onChange={(e) => {
+                  setAiProviderName(e.target.value);
+                  setApiValidation('unknown');
+                }}
+              />
+            </div>
 
             <div className="space-y-2 md:col-span-2">
               <Label className="font-display text-sm text-foreground">
-                {isCustomProvider ? "API Key" : "OpenRouter API Key"}
+                API Airforce API Key
               </Label>
               <div className="relative">
                 <Input
                   type={showAiKey ? "text" : "password"}
                   className="border-border bg-secondary/50 pr-10"
-                  placeholder={isCustomProvider ? "Paste your provider API key" : "sk-or-v1-..."}
+                  placeholder="Paste your API Airforce API key"
                   value={aiApiKey}
                   onChange={(e) => {
                     setAiApiKey(e.target.value);
@@ -306,10 +325,39 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label className="font-display text-sm text-foreground">Model</Label>
+              <Label className="font-display text-sm text-foreground">Model Selection</Label>
+              <Select
+                value={QUICK_MODELS.find(m => m.model === aiModel)?.id || "custom"}
+                onValueChange={(val) => {
+                  if (val === "custom") return;
+                  const selected = QUICK_MODELS.find(m => m.id === val);
+                  if (selected) {
+                    setAiModel(selected.model);
+                    setAiProviderName(selected.provider);
+                    setAiBaseUrl(selected.baseUrl);
+                    setApiValidation('unknown');
+                  }
+                }}
+              >
+                <SelectTrigger className="border-border bg-secondary/50">
+                  <SelectValue placeholder="Select a model" />
+                </SelectTrigger>
+                <SelectContent className="glass border-border">
+                  {QUICK_MODELS.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.label}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="custom">Custom Model...</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="font-display text-sm text-foreground">Model ID</Label>
               <Input
                 className="border-border bg-secondary/50"
-                placeholder={DEFAULT_OPENROUTER_MODEL}
+                placeholder={DEFAULT_API_AIRFORCE_MODEL}
                 value={aiModel}
                 onChange={(e) => {
                   setAiModel(e.target.value);
@@ -318,30 +366,23 @@ export default function SettingsPage() {
               />
             </div>
 
-            {isCustomProvider && (
-              <div className="space-y-2">
-                <Label className="font-display text-sm text-foreground">Base URL</Label>
-                <Input
-                  className="border-border bg-secondary/50"
-                  placeholder="https://api.example.com/v1"
-                  value={aiBaseUrl}
-                  onChange={(e) => {
-                    setAiBaseUrl(e.target.value);
-                    setApiValidation('unknown');
-                  }}
-                />
-              </div>
-            )}
+            <div className="space-y-2">
+              <Label className="font-display text-sm text-foreground">Base URL</Label>
+              <Input
+                className="border-border bg-secondary/50"
+                placeholder={DEFAULT_API_AIRFORCE_BASE_URL}
+                value={aiBaseUrl}
+                onChange={(e) => {
+                  setAiBaseUrl(e.target.value);
+                  setApiValidation('unknown');
+                }}
+              />
+            </div>
           </div>
 
           <p className="mt-3 text-xs text-muted-foreground">
-            OpenRouter is the default text-generation provider. Custom mode expects an OpenAI-compatible `/chat/completions` API.
+            BusyBot uses API Airforce for understanding messages and generating personalized assistant replies.
           </p>
-          {!isCustomProvider && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Recommended starter model: `google/gemma-4-31b-it:free`
-            </p>
-          )}
 
           <div className="mt-3 flex items-center gap-1.5">
             <div
@@ -378,7 +419,7 @@ export default function SettingsPage() {
                 ? 'Key validation inconclusive — saved anyway'
                 : providerReady
                 ? `Using ${providerLabel} with model ${aiModel.trim()}`
-                : 'Using personalized fallback mode'}
+                : 'API Airforce model required'}
             </span>
           </div>
         </div>

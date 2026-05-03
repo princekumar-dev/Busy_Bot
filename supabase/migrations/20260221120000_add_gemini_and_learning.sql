@@ -1,4 +1,4 @@
--- Add Gemini API key to settings for AI-powered smart replies
+-- Historical API-key column kept for older installs; current provider settings use ai_api_key.
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS gemini_api_key TEXT;
 
 -- Add learned style patterns (JSONB) to personality profiles for ML-based learning

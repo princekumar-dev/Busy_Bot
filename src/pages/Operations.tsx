@@ -17,6 +17,8 @@ type EventRow = {
   reason: string | null;
   risk_level: string | null;
   confidence_score: number | null;
+  payload: any;
+  conversation_id: string | null;
   created_at: string;
 };
 
@@ -51,6 +53,7 @@ const EVENT_LABELS: Record<string, string> = {
   draft_only: "draft-only",
   blocked: "blocked",
   needs_review: "needs review",
+  attention_required: "attention required",
   escalate: "emergency",
   emergency_escalation: "emergency",
 };
@@ -66,6 +69,7 @@ const STATUS_BADGE: Record<string, string> = {
   draft_only: "bg-sky-500/15 text-sky-400 border-sky-500/30",
   blocked: "bg-red-500/15 text-red-400 border-red-500/30",
   needs_review: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+  attention_required: "bg-amber-500/15 text-amber-300 border-amber-500/30",
   escalate: "bg-rose-500/15 text-rose-300 border-rose-500/30",
   emergency_escalation: "bg-rose-500/15 text-rose-300 border-rose-500/30",
 };
@@ -152,6 +156,11 @@ export default function Operations() {
     return "High backlog";
   }, [queue.length]);
 
+  const attentionEvents = useMemo(
+    () => events.filter((event) => event.status === "attention_required"),
+    [events]
+  );
+
   const approve = async (item: ApprovalRow) => {
     if (!user) return;
     const editedText = getReplyText(item);
@@ -227,7 +236,7 @@ export default function Operations() {
     <div className="animate-slide-up space-y-6">
       <h1 className="font-display text-2xl font-bold text-foreground">Operations<span className="text-primary">.</span></h1>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
         <div className={`rounded-xl p-4 ${busyMode ? "bg-primary/15" : "bg-secondary/60"}`}>
           <p className="text-xs text-muted-foreground">Assistant Mode</p>
           <p className="font-semibold">{busyMode ? "Busy Active" : "Draft/Observe"}</p>
@@ -240,9 +249,47 @@ export default function Operations() {
           <p className="text-xs text-muted-foreground">Queue Health</p>
           <p className="font-semibold">{queueHealth}</p>
         </div>
+        <div className={`rounded-xl p-4 ${attentionEvents.length ? "bg-amber-500/15" : "bg-secondary/60"}`}>
+          <p className="text-xs text-muted-foreground">Attention Required</p>
+          <p className="font-semibold">{attentionEvents.length}</p>
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
+        <div className="rounded-xl border border-border bg-background p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-400" />
+              <h2 className="font-semibold">Attention Required</h2>
+            </div>
+            <Badge variant="outline" className="bg-amber-500/15 text-amber-300 border-amber-500/30">
+              {attentionEvents.length}
+            </Badge>
+          </div>
+          <div className="space-y-2">
+            {attentionEvents.length === 0 && <p className="text-sm text-muted-foreground">No chats need attention.</p>}
+            {attentionEvents.slice(0, 6).map((event) => (
+              <button
+                key={event.id}
+                type="button"
+                onClick={() => event.conversation_id && navigate(`/conversations?conversation=${event.conversation_id}`)}
+                className="w-full rounded-lg bg-amber-500/10 p-3 text-left transition-colors hover:bg-amber-500/15"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-foreground">
+                    {event.payload?.contact_name || event.payload?.contact_number || "New chat"}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {new Date(event.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </div>
+                <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
+                  {event.payload?.incoming_preview || event.reason || "BusyBot engaged this contact."}
+                </p>
+              </button>
+            ))}
+          </div>
+        </div>
         {/* Compact Audit Summary — replaces the old large Reply Transparency section */}
         <div className="rounded-xl border border-border bg-background p-4">
           <div className="mb-3 flex items-center justify-between">

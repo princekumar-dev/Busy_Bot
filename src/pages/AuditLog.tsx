@@ -23,6 +23,7 @@ const STATUS_COLORS: Record<string, string> = {
   draft_only: "bg-sky-500/15 text-sky-400 border-sky-500/30",
   blocked: "bg-red-500/15 text-red-400 border-red-500/30",
   needs_review: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+  attention_required: "bg-amber-500/15 text-amber-300 border-amber-500/30",
   escalate: "bg-rose-500/15 text-rose-300 border-rose-500/30",
   emergency_escalation: "bg-rose-500/15 text-rose-300 border-rose-500/30",
 };
@@ -133,6 +134,7 @@ export default function AuditLog() {
             <SelectItem value="draft_only">Draft only</SelectItem>
             <SelectItem value="blocked">Blocked</SelectItem>
             <SelectItem value="needs_review">Needs review</SelectItem>
+            <SelectItem value="attention_required">Attention required</SelectItem>
             <SelectItem value="escalate">Escalated</SelectItem>
           </SelectContent>
         </Select>

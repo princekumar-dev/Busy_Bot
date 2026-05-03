@@ -15,6 +15,7 @@ import Analytics from "./pages/Analytics";
 import SettingsPage from "./pages/SettingsPage";
 import Operations from "./pages/Operations";
 import AuditLog from "./pages/AuditLog";
+import Contacts from "./pages/Contacts";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -35,6 +36,7 @@ const App = () => (
               <Route path="/personality" element={<Personality />} />
               <Route path="/analytics" element={<Analytics />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/contacts" element={<Contacts />} />
               <Route path="/operations" element={<Operations />} />
               <Route path="/audit-log" element={<AuditLog />} />
             </Route>

@@ -64,7 +64,7 @@ If all gates pass, generate a personalized assistant reply.
 
 ## 7. Reply Generation
 
-Primary path (OpenRouter by default, or custom provider):
+Primary path (API Airforce):
 
 1. Load personality_profiles (manual settings + learned_style).
 2. Load recent conversation history for that exact contact.
@@ -79,8 +79,8 @@ Primary path (OpenRouter by default, or custom provider):
    - language-matching rule
    - relationship signal
    - recent context
-6. Call the configured provider using an OpenAI-compatible chat completions API.
-7. If user provider key/model is missing, auto-fallback to OpenRouter secret model.
+6. Call API Airforce using an OpenAI-compatible chat completions API.
+7. If API Airforce is unavailable, build a local style-aware backup reply.
 8. Validate response and clean output.
 9. Strict assistant mode sanitizes unsafe commitment phrases.
 
@@ -102,7 +102,7 @@ If busy_test_mode is enabled, BusyBot generates draft-only responses and does no
 Triggered manually from Personality page, or automatically by webhook threshold.
 
 1. train-personality receives user_id.
-2. Reads user settings for `ai_provider`, `ai_api_key`, `ai_model`, and optional custom provider fields.
+2. Reads user settings for `ai_provider`, `ai_api_key`, `ai_model`, and `ai_base_url`.
 3. Loads outgoing user messages.
 4. If the configured provider is available, run AI-based global and per-contact style analysis.
 5. If the provider is missing or fails, run heuristic local style analysis from real user messages instead.

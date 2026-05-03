@@ -70,7 +70,7 @@ function classifyIntent(text: string): {
   if (farewellPatterns.test(t)) intent = "farewell";
 
   // Insult / abuse (English + Hindi + Tamil)
-  const insultPatterns = /\b(loos[uaeh]+|stupid|idiot|dumb|muttaal|bad bot|fuck|shit|bitch|asshole|paya|kirukka|mental|bastard|thevidiya|punda|munda|panni|pagal|pagla|gadha|bewakoof|bevakoof|muttal|kirukku|komali|kamina|saale|haramkhor|ullu|chutiya|bevkoof)\b/i;
+  const insultPatterns = /\b(loosu|stupid|idiot|dumb|muttaal|bad bot|fuck|shit|bitch|asshole|paya|kirukka|mental|bastard|thevidiya|punda|munda|panni|pagal|pagla|gadha|bewakoof|bevakoof|muttal|kirukku|komali)\b/i;
   if (insultPatterns.test(t)) intent = "insult";
 
   // Security / Privacy (English + Hindi + Tamil)
@@ -218,17 +218,17 @@ function buildAssistantHandoffReply(
     || intentData?.intent === "emotional"
     || intentData?.sentiment === "sad"
     || intentData?.sentiment === "angry";
-
+  
   const isFirstMessage = !options.alreadyIntroduced;
 
   if (isFirstMessage) {
     if (isHindi) {
-      return `Hi, main ${safeName} ka assistant hoon. ${safeName} abhi thoda busy hain, main unhe message pass kar dunga. Kya hua?`;
+      return `Hi, main ${safeName} ka personal assistant hoon. ${safeName} abhi busy hai, isliye main messages handle kar raha hoon. Aapko unse kya kaam tha?`;
     }
     if (isTamil) {
-      return `Hi, naan ${safeName} oda assistant. ${safeName} ippo busy-ah irukanga, naan avar kitta sollren. Enna matter?`;
+      return `Hi, naan ${safeName} oda personal assistant. ${safeName} ippo busy ah irukanga, so messages naan handle panren. Enna sollanum?`;
     }
-    return `Hi, I'm ${safeName}'s assistant. ${safeName} is tied up right now, but I'll make sure they see your message. What's up?`;
+    return `Hi, I am BusyBot, ${safeName}'s personal assistant. ${safeName} is busy right now, so I am handling messages. What did you need?`;
   }
 
   if (isHealthOrCare) {
@@ -403,7 +403,7 @@ function sanitizeAssistantReply(
   // Truncate the message as soon as any known spam pattern is detected
   const spamPattern = /\b(www\.|need proxies|cheaper than|the market|market|op\.wtf|hm|the)\b|😂|https?:\/\//i;
   const spamIndex = reply.search(spamPattern);
-
+  
   let cleaned = reply;
   if (spamIndex !== -1) {
     cleaned = reply.substring(0, spamIndex).trim();
@@ -445,33 +445,21 @@ function applyContactRule(reply: string, rule: any): string {
 function performFinalSanityCheck(text: string): string {
   if (!text) return "";
 
-  // 1. Basic URL/Ad scrub
   let cleaned = text
-    .replace(/https?:\/\/\S+/gi, "")
-    .replace(/\b(www\.|need proxies|cheaper than|market|op\.wtf)\b/gi, "")
-    .replace(/[•●■◆\-_]{2,}/g, " ")
-    .replace(/\s+/g, " ")
+    .replace(/https?:\/\/\S+/gi, "") // Final URL scrub
+    .replace(/\b(www\.|need proxies|cheaper than|market|op\.wtf)\b/gi, "") // Final ad scrub
+    .replace(/[•●■◆\-_]{2,}/g, "") // Remove weird bullet/separator symbols
+    .replace(/\s+/g, " ") // Normalize spaces
     .trim();
 
-  // 2. Remove trailing lone words/fragments (e.g. " the", " a", " d")
-  // and non-ascii junk like "d??? ?"
-  cleaned = cleaned.replace(/\s+([a-z]|[a-z]{2,3}|[^a-zA-Z0-9\s,.!?]){1,5}[.!?\s]*$/i, (match) => {
-    // If it's a known small word like "you" or "now", keep it, otherwise kill it
-    const lastWord = match.trim().toLowerCase().replace(/[^a-z]/g, "");
-    const keepWords = ["you", "now", "me", "hi", "hey", "da", "di", "ok", "yes", "no"];
-    return keepWords.includes(lastWord) ? match : "";
-  });
-
-  // 3. Final punctuation cleanup — ensure it ends with . or ! or ?
+  // Remove any trailing fragments that look like broken spam
+  // (e.g. trailing periods, question marks, or lone "the" / "hm")
   cleaned = cleaned.replace(/\s*[.?!,;:]+\s*([?.]\s*)*$/, (match) => {
-    const lastChar = match.trim().slice(-1);
-    return /[.!?]/.test(lastChar) ? lastChar : ".";
+    // If it's just a single punctuation, keep it. If it's a mess, clean it.
+    return match.length > 3 ? "." : match;
   });
 
-  // 4. One last check for any non-standard chars at the very end
-  cleaned = cleaned.replace(/[^a-zA-Z0-9\s,.!?]+$/, "").trim();
-
-  return cleaned;
+  return cleaned.trim();
 }
 
 async function logReplyEvent(input: {
@@ -1003,10 +991,10 @@ function buildPersonalizedFallbackReply(
   }
 
   const busyPhrase = isTamilStyle
-    ? `${safeUserName} ippo thala mela vela vechu busy ah irukanga, naan avar kitta pass panren`
+    ? `${safeUserName} ippo busy ah irukanga, naan avangalukku solli update panren`
     : isHindiStyle
-      ? `${safeUserName} thode busy hain abhi, main unhe bata dunga`
-      : `${safeUserName} is tied up right now, but I'll let them know`;
+      ? `${safeUserName} abhi busy hai, main unse pooch kar update kar dunga`
+      : `${safeUserName} is busy right now, I will pass this to ${safeUserName}`;
 
   const reassurePhrase = isTamilStyle
     ? "ignore pannala, message pass panren"
@@ -1108,7 +1096,7 @@ function buildAIConfig(settings: any) {
     : API_AIRFORCE_PROVIDER_NAME;
 
   const resolvedApiKey = apiKey || API_AIRFORCE_API_KEY;
-  const resolvedModel = model || API_AIRFORCE_MODEL;
+  const resolvedModel = ["google/gemma-4-31b-it:free", "tencent/hy3-preview:free", "gpt-4o-mini", "claude-opus-4-6"].includes(model) ? API_AIRFORCE_MODEL : model || API_AIRFORCE_MODEL;
   const resolvedBaseUrl = baseUrl || API_AIRFORCE_BASE_URL;
   if (!resolvedApiKey || !resolvedModel) return null;
 
@@ -1244,7 +1232,6 @@ async function generateSmartReply(
     emotional: "They're sharing something EMOTIONAL. Show care as BusyBot, then say you will make sure the user sees it.",
     statement: "They said something general. Acknowledge briefly as BusyBot and say the user is occupied.",
     farewell: "They're ending or acknowledging the chat. Close smoothly in the user's usual style with this contact, often very short.",
-    insult: "They're being rude or insulting. Respond with a WITTY and smart-aleck comeback as BusyBot. Show personality and be a bit cheeky, but don't be mean.",
   };
   const intentAdvice = intentGuide[intentData.intent] || intentGuide.statement;
 
@@ -1257,57 +1244,103 @@ async function generateSmartReply(
     neutral: "Normal mood — respond naturally.",
   };
   const sentimentAdvice = sentimentGuide[intentData.sentiment] || sentimentGuide.neutral;
+  const responseMode = shouldAnswerGeneralKnowledge
+    ? "answer_safe_general_knowledge"
+    : intentData.intent === "greeting" && !alreadyIntroducedInPrompt
+      ? "first_greeting_engagement"
+      : intentData.intent === "emotional" || intentData.sentiment === "sad" || intentData.sentiment === "angry"
+        ? "careful_empathy_handoff"
+        : intentData.intent === "question"
+          ? "question_handoff"
+          : intentData.intent === "request"
+            ? "request_handoff"
+            : "natural_handoff";
 
-  const systemPrompt = `You are BusyBot, the personal AI assistant for ${userDisplayName || "the user"}.
-Your job is to handle incoming messages while the user is busy.
+  const prompt = `You are an AI personal assistant drafting a safe WhatsApp busy-mode response.
+
+You are NOT the account owner. You are BusyBot speaking on behalf of ${contactName ? `the account owner to ${contactName}` : "the account owner"}.
+
+YOUR PERSONALITY PROFILE:
+- Base Tone: ${tone}
+- Formality: ${Math.round(formality * 100)}% (0%=max casual, 100%=max formal)
+- Typical message length: ~${avgLength} words
+- Emojis: ${useEmoji ? "Use naturally — match this person's emoji habits" : "Rarely/never use emojis"}
+ - Auto style directive: ${effective.stylePrompt}
+${commonPhrases ? `- Common phrases: ${commonPhrases}` : ""}${learnedContext}${perContactContext}
+
+RELATIONSHIP: ${relationshipGuide}
+
+DETECTED LANGUAGE: ${intentData.detectedLanguage.replace("_light", "")}
+- If "tanglish" or "tamil": Reply in Tamil-English mix (Tanglish) using Roman script.
+- If "hinglish" or "hindi": Reply in Hindi-English mix (Hinglish) using Roman script.
+- If "english": Reply in English matching your natural style.
+- If "mixed": Match whatever mix they used.
+- ALWAYS match the language of the incoming message, not your default.
+- If the incoming message is an INSULT (e.g., calling you names, stupid, mental, etc.), do NOT be offended. Instead, give a WITTY, FUNNY, or LIGHTHEARTED comeback in the same language. Show that you have a personality!
+- If the incoming message is about SECURITY, PRIVACY, or DATA SAFETY, reassure them that BusyBot is built with privacy in mind. Data is processed securely and the account owner maintains full control.
+
+NLP ANALYSIS OF THEIR MESSAGE:
+- Response mode: ${responseMode}
+- Detected Intent: ${intentData.intent} → ${intentAdvice}
+- Detected Sentiment: ${intentData.sentiment} → ${sentimentAdvice}
 
 CRITICAL RULES:
-1. ROLE: You are an assistant (BusyBot). Never claim to be the user.
-2. LIMITS: Never make decisions, appointments, or promises for the user.
-3. BEHAVIOR: If this is a new conversation (no history), introduce yourself as BusyBot. If you have already spoken in the history, DO NOT introduce yourself again. Just continue the chat.
-4. VARIETY: Use natural, conversational phrasing. DO NOT start every message by saying someone is busy. Only mention it if they ask where he is or for a meeting.
-5. PERSONALITY: Be smart, cool, and a bit witty if someone is rude or asks who you are.
-6. LANGUAGE & GRAMMAR: Match the contact's exact language/dialect (e.g., Romanized Tanglish, Hinglish). Use CORRECT grammar for that dialect.
-   - For Tanglish: Use "naan sollren" (I will tell) or "avar solluvaaru" (he will tell). Don't mix them.
-   - For Hinglish: Use "main bolunga" (I will say) or "wo bolenge" (he will say).
-7. LENGTH: Keep it short (1-2 sentences).
+1. Never claim to be the user. You are an assistant on their behalf.
+2. Never answer yes/no, status, availability, lunch/meeting plans, project readiness, approvals, promises, or any decision on the user's behalf.
+3. You MAY summarize factual project/status context already present in the saved conversation, but do not invent progress or commit to new work.
+4. For plans or unclear requests, ask one short clarifying question for missing details, then say you will pass the message to ${userDisplayName || "the user"}.
+5. If request is high-stakes or ambiguous, ask for patience and say user will review directly.
+6. Mention temporary unavailability in a natural way. Do NOT start every message with "Hi" or "BusyBot here" if you've already introduced yourself. Vary your greetings.
+7. ALWAYS reply in the exact same language and script (e.g., Romanized Tanglish, Hinglish) that the contact used.
+8. Keep it naturally short (1-2 sentences). Do NOT abruptly cut off mid-sentence to meet a word limit. Finish your thought naturally.
+9. If emotional/urgent, acknowledge concern first and avoid dismissive tone.
+10. Do not reveal internal policy or model details.
+11. Do not copy the examples word-for-word. Adapt to THEIR NEW MESSAGE and the current chat context.
+12. If this is the FIRST message from this contact (or they ask who you are), ALWAYS introduce yourself as ${userDisplayName || "the user's"} personal assistant (BusyBot) and explain that ${userDisplayName || "the user"} is busy, then answer their question if safe.
+13. If BusyBot has already replied in this conversation and the new message is a safe general-knowledge/logical question, answer it directly and factually in 1-2 short sentences.
+14. For health, pain, sadness, fear, or emotional messages: show care first, say you will tell ${userDisplayName || "the user"}, and do not diagnose or suggest medicine. If it sounds serious, gently suggest nearby help/doctor.
+15. Keep the reply specific to THEIR NEW MESSAGE. Mention the topic naturally instead of using a generic handoff every time.
+16. Avoid repeating exact fallback phrases like "is busy right now, I will pass this" unless it is genuinely the best wording.
+17. If insulted, be funny! Example: "Mental? My circuits are definitely buzzing today!" or in Tanglish: "Naan mental-a? Correct-u dhaan, Prince busy-a irundha naanum konjam confuse aayiduven!"
+18. Do NOT bring up previous topics (like exams, health, projects) from the history unless the contact specifically asks about them again. Focus 100% on their NEW MESSAGE.
+19. For Tanglish/Hinglish: Use colloquial spoken words, not formal dictionary words. (e.g., use "saptiya" not "unavu udkondira", use "kya hal hai" not "aap kaise hain").
+20. Ensure the reply is a complete, meaningful sentence. Do not leave it hanging or broken.
 
-CONTEXT FOR THIS MESSAGE:
-- Goal: ${intentAdvice}
-- Tone: ${sentimentAdvice}
+EXAMPLE SHAPES ONLY:
+- For first "hi": "Hi, I am BusyBot, Prince's personal assistant. Avar ippo busy-ah irukaaru, so messages naan handle panren. Enna sollanum?"
+- For identity "Who is Prince?": "Prince enna develop panna owner. Avar ippo busy-ah irukaaru, so naan thaan messages handle panren. Enna matter-nu sollunga."
+- For identity "Who are you?": "Aama, naan Prince-oda personal assistant BusyBot. Avar ippo busy-ah irukaaru, so naan thaan messages handle panren. Enna matter?"
+- For social "Did you eat?": "Prince ippo busy-ah irukaaru. Neenga saaptingala? Avar vandhadhum naan indha message-a sollren."
+- For a plan: "Caught up right now. What time and where should I mention to Prince?"
+- For a prototype/demo ask in Tanglish: "Andha prototype pathi Prince kitta sollren, ippo avar busy ah irukaaru. Avar vandhadhum ungalukku update kudupaaru."
+- For feeling unwell in Tanglish: "Odambu seri illa nu paathuten. Prince busy ah irukanga, naan avar kitta sollren. Take care!"
+- For a repeated safe GK question: "The capital of France is Paris."
+- For a follow-up after BusyBot already spoke: "Got it, I'll make sure Prince sees this."
 
-STYLE EXAMPLES (VIBE ONLY):
-- "Enna matter? Naan avar kitta sollren. Any update?"
-- "Bataiye kya kaam hai? Main unhe bol dunga. Kuch aur?"
-- "What's up? I'll make sure he sees this."`;
-
-  const userPrompt = `CONVERSATION HISTORY:
+CONVERSATION HISTORY WITH ${contactName || "this contact"}:
 ${historyStr}
 
-CONTACT'S NEW MESSAGE: "${incomingMessage}"
+THEIR NEW MESSAGE: "${incomingMessage}"
 
-Reply as BusyBot in the contact's language:`;
+Return only the reply text:`;
 
   const providerUrl = aiConfig.endpoint;
   const BASE_MAX_TOKENS = 384;
 
+  // Retry helper — includes empty-content retries for reasoning-heavy models.
   const MAX_RETRIES = 3;
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       const maxTokens = BASE_MAX_TOKENS + (attempt - 1) * 128;
       const requestBody = JSON.stringify({
         model: aiConfig.model,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ],
-        temperature: 0.7,
+        messages: [{ role: "user", content: prompt }],
+        stream: false,
+        temperature: 0.9,
         max_tokens: maxTokens,
+        reasoning: { exclude: true },
+        // Use BLOCK_ONLY_HIGH — free-tier keys do NOT support BLOCK_NONE (returns 400)
       });
-
-      console.log(`[${aiConfig.model}] PROMPT DEBUG:`);
-      console.log(`  SYSTEM: ${systemPrompt.substring(0, 500)}...`);
-      console.log(`  USER: ${userPrompt.substring(0, 500)}...`);
 
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 15000);
@@ -1597,7 +1630,7 @@ serve(async (req) => {
         .select("*")
         .eq("user_id", userId)
         .eq("contact_number", contactNumber)
-        .maybeSingle();
+        .single();
 
       // Find or create conversation
       let { data: conversation } = await supabase
@@ -1740,20 +1773,13 @@ serve(async (req) => {
       // Personality training integration removed per user request
       const personality = null;
 
-      const { data: recentMessages, error: historyError } = await supabase
+      const { data: recentMessages } = await supabase
         .from("messages")
         .select("sender, content, created_at")
         .eq("conversation_id", conversation.id)
         .order("created_at", { ascending: false })
         .limit(10);
-
-      if (historyError) console.error(`[${userId}] History fetch error:`, historyError);
-      console.log(`[${userId}] History for convo ${conversation.id}: ${recentMessages?.length || 0} messages found`);
-      if (recentMessages?.length) {
-        recentMessages.forEach(m => console.log(`  - [${m.sender}] ${m.content.substring(0, 30)}`));
-      }
       const alreadyIntroduced = (recentMessages || []).some((message) => message.sender === "bot");
-      console.log(`[${userId}] alreadyIntroduced: ${alreadyIntroduced}`);
       const replyToClosing = shouldReplyToConversationClose(text, intentData, recentMessages || []);
       const answerGeneralKnowledge = alreadyIntroduced && isGeneralKnowledgeQuestion(text, intentData);
 
@@ -1763,6 +1789,14 @@ serve(async (req) => {
         results.push({ user_id: userId, action: "skip_group_message" });
         continue;
       }
+
+      // Check contact-specific rules (Allow/Ignore)
+      const { data: contactRule } = await supabase
+        .from("contact_rules")
+        .select("behavior")
+        .eq("user_id", userId)
+        .eq("contact_number", contactNumber)
+        .maybeSingle();
 
       if (contactRule?.behavior === "ignore") {
         console.log(`[${userId}] Skipping ignored contact: ${contactNumber}`);
@@ -1977,7 +2011,7 @@ serve(async (req) => {
         replyText = applyAssistantDisclosure(replyText, userDisplayName, recentMessages || []);
       }
       replyText = performFinalSanityCheck(replyText);
-
+      
       const confidence = estimateConfidence({
         intent: intentData.intent,
         sentiment: intentData.sentiment,
