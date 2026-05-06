@@ -96,26 +96,26 @@ export default function AuditLog() {
   };
 
   return (
-    <div className="animate-slide-up space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="animate-slide-up space-y-4 sm:space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
-          <div className="rounded-lg bg-primary/10 p-2"><ScrollText className="h-5 w-5 text-primary" /></div>
+          <div className="rounded-lg bg-primary/10 p-2"><ScrollText className="h-4 w-4 sm:h-5 sm:w-5 text-primary" /></div>
           <div>
-            <h1 className="font-display text-2xl font-bold text-foreground">Audit Log<span className="text-primary">.</span></h1>
-            <p className="text-sm text-muted-foreground">Complete trail of every BusyBot decision</p>
+            <h1 className="font-display text-xl sm:text-2xl font-bold text-foreground">Audit Log<span className="text-primary">.</span></h1>
+            <p className="text-xs sm:text-sm text-muted-foreground">Complete trail of every BusyBot decision</p>
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={fetchEvents} className="gap-1.5"><RefreshCw className="h-3.5 w-3.5" />Refresh</Button>
-          <Button variant="outline" size="sm" onClick={exportCSV} disabled={!events.length} className="gap-1.5"><Download className="h-3.5 w-3.5" />Export CSV</Button>
+          <Button variant="outline" size="sm" onClick={fetchEvents} className="gap-1.5 flex-1 sm:flex-none"><RefreshCw className="h-3.5 w-3.5" />Refresh</Button>
+          <Button variant="outline" size="sm" onClick={exportCSV} disabled={!events.length} className="gap-1.5 flex-1 sm:flex-none"><Download className="h-3.5 w-3.5" />Export CSV</Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 sm:grid-cols-4">
         {[["Total Events", totalCount], ["Filtered", hasFilters ? events.length : totalCount], ["Page", totalPages > 0 ? `${page+1}/${totalPages}` : "—"], ["Per Page", PAGE_SIZE]].map(([l,v]) => (
-          <div key={String(l)} className="rounded-xl bg-secondary/60 p-3">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{String(l)}</p>
-            <p className="font-display text-lg font-bold text-foreground">{String(v)}</p>
+          <div key={String(l)} className="rounded-xl bg-secondary/60 p-2 sm:p-3">
+            <p className="text-[9px] sm:text-[10px] text-muted-foreground uppercase tracking-wider">{String(l)}</p>
+            <p className="font-display text-base sm:text-lg font-bold text-foreground">{String(v)}</p>
           </div>
         ))}
       </div>
@@ -192,11 +192,11 @@ export default function AuditLog() {
       </div>
 
       {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">Showing {page*PAGE_SIZE+1}–{Math.min((page+1)*PAGE_SIZE, totalCount)} of {totalCount}</p>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-muted-foreground text-center sm:text-left">Showing {page*PAGE_SIZE+1}–{Math.min((page+1)*PAGE_SIZE, totalCount)} of {totalCount}</p>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={page===0} onClick={()=>setPage(p=>p-1)} className="gap-1"><ChevronLeft className="h-3.5 w-3.5" />Previous</Button>
-            <Button variant="outline" size="sm" disabled={page>=totalPages-1} onClick={()=>setPage(p=>p+1)} className="gap-1">Next<ChevronRight className="h-3.5 w-3.5" /></Button>
+            <Button variant="outline" size="sm" disabled={page===0} onClick={()=>setPage(p=>p-1)} className="gap-1 flex-1 sm:flex-none"><ChevronLeft className="h-3.5 w-3.5" />Prev</Button>
+            <Button variant="outline" size="sm" disabled={page>=totalPages-1} onClick={()=>setPage(p=>p+1)} className="gap-1 flex-1 sm:flex-none">Next<ChevronRight className="h-3.5 w-3.5" /></Button>
           </div>
         </div>
       )}

@@ -207,33 +207,29 @@ export default function SettingsPage() {
 
   if (loading) return <div className="h-96 animate-pulse rounded-xl bg-secondary" />;
 
-  const providerLabel = aiProviderName.trim() || DEFAULT_API_AIRFORCE_PROVIDER_NAME;
-  const hasStoredOrEnteredModel = !!aiModel.trim();
-  const providerReady = hasStoredOrEnteredModel;
-
   return (
-    <div className="animate-slide-up max-w-2xl">
-      <div className="mb-6 flex items-center gap-3">
+    <div className="animate-slide-up w-full max-w-2xl mx-auto md:mx-0">
+      <div className="mb-5 sm:mb-6 flex items-center gap-3">
         <div className="rounded-lg bg-primary/10 p-2">
-          <Settings className="h-5 w-5 text-primary" />
+          <Settings className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
         </div>
         <div>
-          <h1 className="font-display text-2xl font-bold text-foreground">
+          <h1 className="font-display text-xl sm:text-2xl font-bold text-foreground">
             Settings<span className="text-primary">.</span>
           </h1>
-          <p className="text-sm text-muted-foreground">Configure BusyBot behavior</p>
+          <p className="text-xs sm:text-sm text-muted-foreground">Configure BusyBot behavior</p>
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-4 sm:gap-6 md:grid-cols-2">
         <div className="md:col-span-2">
           <EvoQRConnector />
         </div>
 
-        <div className="glass rounded-xl p-6">
-          <div className="mb-4 flex items-center gap-3">
+        <div className="glass rounded-xl p-4 sm:p-6">
+          <div className="mb-3 sm:mb-4 flex items-center gap-3">
             <Volume2 className="h-4 w-4 text-primary" />
-            <h3 className="font-display text-base font-semibold text-foreground">Voice Replies</h3>
+            <h3 className="font-display text-sm sm:text-base font-semibold text-foreground">Voice Replies</h3>
           </div>
           <div className="flex items-center justify-between">
             <div>
@@ -244,10 +240,10 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="glass rounded-xl p-6">
-          <div className="mb-4 flex items-center gap-3">
+        <div className="glass rounded-xl p-4 sm:p-6">
+          <div className="mb-3 sm:mb-4 flex items-center gap-3">
             <Bell className="h-4 w-4 text-primary" />
-            <h3 className="font-display text-base font-semibold text-foreground">Safety Guard</h3>
+            <h3 className="font-display text-sm sm:text-base font-semibold text-foreground">Safety Guard</h3>
           </div>
           <div className="flex items-center justify-between">
             <div>
@@ -258,10 +254,10 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="glass rounded-xl p-6">
-          <div className="mb-4 flex items-center gap-3">
+        <div className="glass rounded-xl p-4 sm:p-6">
+          <div className="mb-3 sm:mb-4 flex items-center gap-3">
             <Settings className="h-4 w-4 text-primary" />
-            <h3 className="font-display text-base font-semibold text-foreground">Testing</h3>
+            <h3 className="font-display text-sm sm:text-base font-semibold text-foreground">Testing</h3>
           </div>
           <div className="flex items-center justify-between">
             <div>
@@ -272,10 +268,10 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="glass rounded-xl p-6">
-          <div className="mb-4 flex items-center gap-3">
+        <div className="glass rounded-xl p-4 sm:p-6">
+          <div className="mb-3 sm:mb-4 flex items-center gap-3">
             <Bell className="h-4 w-4 text-primary" />
-            <h3 className="font-display text-base font-semibold text-foreground">Notifications</h3>
+            <h3 className="font-display text-sm sm:text-base font-semibold text-foreground">Notifications</h3>
           </div>
           <div className="flex items-center justify-between">
             <div>
@@ -286,10 +282,10 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="glass rounded-xl p-6 md:col-span-2">
-          <div className="mb-4 flex items-center gap-3">
+        <div className="glass rounded-xl p-4 sm:p-6 md:col-span-2">
+          <div className="mb-3 sm:mb-4 flex items-center gap-3">
             <Volume2 className="h-4 w-4 text-primary" />
-            <h3 className="font-display text-base font-semibold text-foreground">Reply Tone</h3>
+            <h3 className="font-display text-sm sm:text-base font-semibold text-foreground">Reply Tone</h3>
           </div>
           <div className="grid gap-2">
             <Label className="font-display text-sm text-foreground">BusyBot tone</Label>
@@ -311,10 +307,10 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="glass rounded-xl p-6 md:col-span-2">
-          <div className="mb-4 flex items-center gap-3">
+        <div className="glass rounded-xl p-4 sm:p-6 md:col-span-2">
+          <div className="mb-3 sm:mb-4 flex items-center gap-3">
             <Key className="h-4 w-4 text-primary" />
-            <h3 className="font-display text-base font-semibold text-foreground">Text Generation</h3>
+            <h3 className="font-display text-sm sm:text-base font-semibold text-foreground">Text Generation</h3>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -421,44 +417,22 @@ export default function SettingsPage() {
             BusyBot uses API Airforce for understanding messages and generating personalized assistant replies.
           </p>
 
-          <div className="mt-3 flex items-center gap-1.5">
-            <div
-              className={`h-2 w-2 rounded-full ${
-                apiValidation === 'valid'
-                  ? 'bg-green-500 animate-pulse'
-                  : apiValidation === 'invalid'
-                  ? 'bg-red-500'
-                  : apiValidation === 'inconclusive'
-                  ? 'bg-yellow-500'
-                  : providerReady
-                  ? 'bg-green-500 animate-pulse'
-                  : 'bg-yellow-500'
-              }`}
-            />
-            <span
-              className={`text-xs font-medium ${
-                apiValidation === 'valid'
-                  ? 'text-green-500'
-                  : apiValidation === 'invalid'
-                  ? 'text-red-500'
-                  : apiValidation === 'inconclusive'
-                  ? 'text-yellow-500'
-                  : providerReady
-                  ? 'text-green-500'
-                  : 'text-yellow-500'
-              }`}
-            >
-              {apiValidation === 'valid'
-                ? `API key validated — Using ${providerLabel} with model ${aiModel.trim()}`
-                : apiValidation === 'invalid'
-                ? 'API key invalid — check and try again'
-                : apiValidation === 'inconclusive'
-                ? 'Key validation inconclusive — saved anyway'
-                : providerReady
-                ? `Using ${providerLabel} with model ${aiModel.trim()}`
-                : 'API Airforce model required'}
-            </span>
-          </div>
+          {/* Active model badge — shows exactly what the webhook will use */}
+          {aiModel.trim() && (
+            <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
+              <p className="text-xs font-medium text-primary">
+                ✦ Active for reply generation:
+                <span className="ml-1 font-bold">{aiModel.trim()}</span>
+                {!QUICK_MODELS.find(m => m.model === aiModel.trim()) && (
+                  <span className="ml-1 text-muted-foreground">(custom)</span>
+                )}
+              </p>
+              <p className="mt-0.5 text-[10px] text-muted-foreground">
+                Save settings to apply this model to all new WhatsApp replies.
+              </p>
+            </div>
+          )}
+
         </div>
 
         <div className="glass rounded-xl p-6 md:col-span-2">

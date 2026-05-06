@@ -177,29 +177,29 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="space-y-8 animate-slide-up">
+    <div className="space-y-5 sm:space-y-8 animate-slide-up">
       <div>
-        <h1 className="font-display text-2xl font-bold text-foreground">
+        <h1 className="font-display text-xl sm:text-2xl font-bold text-foreground">
           Welcome back<span className="text-primary">.</span>
         </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
           Here's what BusyBot has been up to.
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         <StatCard title="Messages Handled" value={totalMessages} icon={MessageSquare} trend={msgTrend.trend} trendValue={msgTrend.text} />
         <StatCard title="Auto Replies" value={autoReplies} icon={Bot} trend={replyTrend.trend} trendValue={replyTrend.text} />
         <StatCard title="Emergencies" value={emergencies} icon={AlertTriangle} trend={emergTrend.trend} trendValue={emergTrend.text} />
         <StatCard title="Avg Response" value={formatAvgResponse()} icon={Clock} trend="neutral" trendValue={avgResponseMs !== null ? "Auto-reply speed" : "No replies yet"} />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-4 sm:gap-6 lg:grid-cols-3">
         <div className="lg:col-span-1">
           <BusyModeToggle />
         </div>
 
-        <div className="glass rounded-xl p-6 lg:col-span-2">
+        <div className="glass rounded-xl p-4 sm:p-6 lg:col-span-2">
           <h3 className="font-display text-lg font-semibold text-foreground">Recent Activity</h3>
           {recentActivity.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -210,7 +210,7 @@ export default function Dashboard() {
           ) : (
             <div className="mt-4 space-y-3">
               {recentActivity.map((item) => (
-                <div key={item.id} className="flex items-center gap-4 rounded-lg bg-secondary/50 p-4 transition-colors hover:bg-secondary">
+                <div key={item.id} className="flex items-center gap-3 rounded-lg bg-secondary/50 p-3 transition-colors hover:bg-secondary">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 font-display text-sm font-bold text-primary">
                     {(item.contact_name || item.contact_number)[0].toUpperCase()}
                   </div>

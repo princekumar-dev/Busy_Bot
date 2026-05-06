@@ -1194,6 +1194,8 @@ function buildChatCompletionsEndpoint(baseUrl: string): string {
 }
 
 function buildAIConfig(settings: any) {
+  // Always prefer user-configured settings over environment variable defaults.
+  // Settings fields: ai_api_key, ai_model, ai_base_url, ai_provider_name
   const apiKey = typeof settings?.ai_api_key === "string" ? settings.ai_api_key.trim() : "";
   const model = typeof settings?.ai_model === "string" ? settings.ai_model.trim() : "";
   const baseUrl = typeof settings?.ai_base_url === "string" ? settings.ai_base_url.trim() : "";
@@ -1201,13 +1203,23 @@ function buildAIConfig(settings: any) {
     ? settings.ai_provider_name.trim()
     : API_AIRFORCE_PROVIDER_NAME;
 
+  // Prefer settings values; fall back to env vars only when settings field is absent/empty.
   const resolvedApiKey = apiKey || API_AIRFORCE_API_KEY;
-  // Only replace placeholder/known-invalid model IDs with the default.
-  // Valid user-configured models (gpt-4o-mini, claude-opus-4-6, etc.) are used as-is.
-  const knownPlaceholderModels = ["google/gemma-4-31b-it:free", "tencent/hy3-preview:free"];
-  const resolvedModel = knownPlaceholderModels.includes(model) ? API_AIRFORCE_MODEL : model || API_AIRFORCE_MODEL;
+
+  // Use the model exactly as configured in settings.
+  // Only fall back to the env-var default if the settings model field is completely empty.
+  // Legacy placeholder-only models that were stored due to old UI bugs are still replaced.
+  const legacyPlaceholderModels = new Set(["google/gemma-4-31b-it:free", "tencent/hy3-preview:free"]);
+  const resolvedModel = model && !legacyPlaceholderModels.has(model) ? model : API_AIRFORCE_MODEL;
+
   const resolvedBaseUrl = baseUrl || API_AIRFORCE_BASE_URL;
-  if (!resolvedApiKey || !resolvedModel) return null;
+
+  if (!resolvedApiKey || !resolvedModel) {
+    console.error("buildAIConfig: missing api key or model — cannot build AI config");
+    return null;
+  }
+
+  console.log(`buildAIConfig → provider=${providerName}, model=${resolvedModel}, baseUrl=${resolvedBaseUrl} (from_settings: model=${!!model}, key=${!!apiKey}, url=${!!baseUrl})`);
 
   return {
     provider: "api_airforce",
@@ -2021,7 +2033,8 @@ serve(async (req) => {
       // PRIMARY SYSTEM: LLM-based reply generation
       // If LLM (API Airforce) is unavailable, use prompt-based fallback generator
       if (!providerUsed) {
-        console.log(`[${userId}] LLM (${aiConfig.providerName}) unavailable; using prompt-based reply generation`);
+        const providerLabel = aiConfig?.providerName || "unknown provider";
+        console.log(`[${userId}] LLM (${providerLabel}) unavailable; using prompt-based reply generation`);
         replyText = await generateFallbackReplyFromPrompt(
           text,
           contactName,

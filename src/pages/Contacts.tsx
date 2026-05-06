@@ -119,28 +119,28 @@ export default function Contacts() {
   if (loading) return <div className="h-96 animate-pulse rounded-xl bg-secondary" />;
 
   return (
-    <div className="animate-slide-up space-y-6">
-      <div className="flex items-center justify-between mb-2">
+    <div className="animate-slide-up space-y-4 sm:space-y-6">
+      <div className="flex items-center justify-between mb-1 sm:mb-2">
         <div className="flex items-center gap-3">
           <div className="rounded-lg bg-primary/10 p-2">
-            <Users className="h-5 w-5 text-primary" />
+            <Users className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
           </div>
           <div>
-            <h1 className="font-display text-2xl font-bold text-foreground">
+            <h1 className="font-display text-xl sm:text-2xl font-bold text-foreground">
               Contacts<span className="text-primary">.</span>
             </h1>
-            <p className="text-sm text-muted-foreground">Manage who BusyBot talks to and how it behaves</p>
+            <p className="text-xs sm:text-sm text-muted-foreground">Manage who BusyBot talks to</p>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
         {/* Left Column: Add Contact */}
-        <div className="lg:col-span-4 space-y-6">
-          <div className="glass rounded-xl p-6 border-2 border-primary/10">
+        <div className="lg:col-span-4 space-y-4">
+          <div className="glass rounded-xl p-4 sm:p-6 border-2 border-primary/10">
             <div className="flex items-center gap-2 mb-4">
-              <UserPlus className="h-5 w-5 text-primary" />
-              <h2 className="font-display text-lg font-bold text-foreground">Add Contact Rule</h2>
+              <UserPlus className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
+              <h2 className="font-display text-base sm:text-lg font-bold text-foreground">Add Contact Rule</h2>
             </div>
             
             <div className="space-y-4">
@@ -247,7 +247,8 @@ export default function Contacts() {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <div className="hidden group-hover:flex items-center gap-1">
+                      {/* Always-visible quick actions on mobile, hover-only on larger screens */}
+                      <div className="flex items-center gap-1">
                         <Button 
                           variant="ghost" 
                           size="sm" 
@@ -267,7 +268,7 @@ export default function Contacts() {
                         <Button 
                           variant="ghost" 
                           size="sm" 
-                          className={`h-8 px-2 text-[11px] ${rule.behavior === "manual_review" ? "bg-amber-500/10 text-amber-500" : ""}`}
+                          className={`hidden sm:inline-flex h-8 px-2 text-[11px] ${rule.behavior === "manual_review" ? "bg-amber-500/10 text-amber-500" : ""}`}
                           onClick={() => updateBehavior(rule.id, "manual_review")}
                         >
                           Review

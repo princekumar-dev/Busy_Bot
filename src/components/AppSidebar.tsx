@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Bot, LayoutDashboard, MessageSquare, BarChart3, Settings, LogOut, Workflow, ScrollText, Users } from "lucide-react";
+import { Bot, LayoutDashboard, MessageSquare, BarChart3, Settings, LogOut, Workflow, Users } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -20,7 +20,6 @@ const navItems = [
   { title: "Conversations", url: "/conversations", icon: MessageSquare },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
   { title: "Operations", url: "/operations", icon: Workflow },
-  { title: "Audit Log", url: "/audit-log", icon: ScrollText },
   { title: "Contacts", url: "/contacts", icon: Users },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
