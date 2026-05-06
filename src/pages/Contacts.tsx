@@ -180,7 +180,7 @@ export default function Contacts() {
                   <CheckCircle2 className="h-3 w-3 text-green-500" />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  <span className="font-bold text-foreground">Auto-Reply:</span> Full AI response based on your personality.
+                  <span className="font-bold text-foreground">Auto-Reply:</span> BusyBot can reply using your selected tone and saved chat context.
                 </p>
               </div>
               <div className="flex items-start gap-3">

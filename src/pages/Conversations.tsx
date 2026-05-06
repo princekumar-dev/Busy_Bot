@@ -8,6 +8,7 @@ interface Conversation {
   id: string;
   contact_name: string | null;
   contact_number: string;
+  saved_contact_name?: string | null;
   last_message_at: string | null;
   unread_count: number | null;
   created_at: string;
@@ -20,6 +21,60 @@ interface Message {
   created_at: string;
   is_auto_reply: boolean | null;
   urgency: string | null;
+}
+
+interface ContactRuleName {
+  contact_name: string | null;
+  contact_number: string;
+}
+
+function normalizeContactNumber(value: string): string {
+  return value
+    .replace(/@s\.whatsapp\.net$/i, "")
+    .replace(/@c\.us$/i, "")
+    .replace(/@lid$/i, "")
+    .replace(/[^\d+]/g, "");
+}
+
+function getContactNumberLookupKeys(value: string): string[] {
+  const normalized = normalizeContactNumber(value);
+  const digitsOnly = normalized.replace(/\D/g, "");
+  const keys = new Set<string>();
+
+  if (normalized) keys.add(normalized);
+  if (digitsOnly) {
+    keys.add(digitsOnly);
+    keys.add(`+${digitsOnly}`);
+  }
+
+  return [...keys];
+}
+
+function buildSavedContactNameMap(contactRules: ContactRuleName[]): Record<string, string> {
+  const nameMap: Record<string, string> = {};
+
+  contactRules.forEach((rule) => {
+    const savedName = rule.contact_name?.trim();
+    if (!savedName) return;
+
+    getContactNumberLookupKeys(rule.contact_number).forEach((key) => {
+      nameMap[key] = savedName;
+    });
+  });
+
+  return nameMap;
+}
+
+function getSavedContactName(contactNumber: string, nameMap: Record<string, string>): string | null {
+  for (const key of getContactNumberLookupKeys(contactNumber)) {
+    if (nameMap[key]) return nameMap[key];
+  }
+
+  return null;
+}
+
+function getConversationDisplayName(conversation: Conversation): string {
+  return conversation.saved_contact_name || conversation.contact_name || conversation.contact_number;
 }
 
 function timeAgo(dateStr: string): string {
@@ -64,11 +119,26 @@ export default function Conversations() {
       if (error) {
         console.error("Error fetching conversations:", error);
       } else {
-        setConversations(data || []);
+        const { data: contactRules, error: contactRulesError } = await supabase
+          .from("contact_rules")
+          .select("contact_number, contact_name")
+          .eq("user_id", user.id);
+
+        if (contactRulesError) {
+          console.error("Error fetching saved contacts:", contactRulesError);
+        }
+
+        const savedContactNameMap = buildSavedContactNameMap((contactRules as ContactRuleName[]) || []);
+        const conversationsWithSavedNames = (data || []).map((conversation) => ({
+          ...conversation,
+          saved_contact_name: getSavedContactName(conversation.contact_number, savedContactNameMap),
+        }));
+
+        setConversations(conversationsWithSavedNames);
 
         // Fetch the last message for each conversation
         const msgMap: Record<string, string> = {};
-        for (const convo of data || []) {
+        for (const convo of conversationsWithSavedNames) {
           const { data: msgData } = await supabase
             .from("messages")
             .select("content")
@@ -82,8 +152,8 @@ export default function Conversations() {
         setLastMessages(msgMap);
 
         // Auto-select the first conversation
-        if (data && data.length > 0 && !selectedId) {
-          setSelectedId(data[0].id);
+        if (conversationsWithSavedNames.length > 0 && !selectedId) {
+          setSelectedId(conversationsWithSavedNames[0].id);
         }
       }
       setLoadingConvos(false);
@@ -97,6 +167,13 @@ export default function Conversations() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "conversations", filter: `user_id=eq.${user.id}` },
+        () => {
+          fetchConversations();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "contact_rules", filter: `user_id=eq.${user.id}` },
         () => {
           fetchConversations();
         }
@@ -162,9 +239,17 @@ export default function Conversations() {
   }, [messages]);
 
   const filtered = conversations.filter(
-    (c) =>
-      (c.contact_name || "").toLowerCase().includes(search.toLowerCase()) ||
-      c.contact_number.includes(search)
+    (c) => {
+      const displayName = getConversationDisplayName(c).toLowerCase();
+      const fallbackName = (c.contact_name || "").toLowerCase();
+      const searchText = search.toLowerCase();
+
+      return (
+        displayName.includes(searchText) ||
+        fallbackName.includes(searchText) ||
+        c.contact_number.includes(search)
+      );
+    }
   );
 
   const selectedConvo = conversations.find((c) => c.id === selectedId);
@@ -221,14 +306,18 @@ export default function Conversations() {
                     selectedId === c.id ? "bg-primary/5 border-l-2 border-l-primary" : ""
                   }`}
                 >
+                  {(() => {
+                    const displayName = getConversationDisplayName(c);
+
+                    return (
                   <div className="flex items-center gap-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 font-display text-sm font-bold text-primary">
-                      {(c.contact_name || c.contact_number)[0].toUpperCase()}
+                      {displayName[0].toUpperCase()}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium text-foreground">
-                          {c.contact_name || c.contact_number}
+                          {displayName}
                         </span>
                         <span className="text-[10px] text-muted-foreground">
                           {c.last_message_at ? timeAgo(c.last_message_at) : ""}
@@ -244,6 +333,8 @@ export default function Conversations() {
                       </span>
                     )}
                   </div>
+                    );
+                  })()}
                 </button>
               ))}
             </div>
@@ -254,6 +345,10 @@ export default function Conversations() {
         <div className={`flex flex-1 flex-col ${showChat ? "block" : "hidden md:flex"}`}>
           {selectedConvo ? (
             <>
+              {(() => {
+                const displayName = getConversationDisplayName(selectedConvo);
+
+                return (
               <div className="flex items-center gap-3 border-b border-border p-4">
                 <button
                   onClick={() => setShowChat(false)}
@@ -262,17 +357,19 @@ export default function Conversations() {
                   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
                 </button>
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 font-display text-xs font-bold text-primary">
-                  {(selectedConvo.contact_name || selectedConvo.contact_number)[0].toUpperCase()}
+                  {displayName[0].toUpperCase()}
                 </div>
                 <div>
                   <p className="text-sm font-medium text-foreground">
-                    {selectedConvo.contact_name || selectedConvo.contact_number}
+                    {displayName}
                   </p>
                   <p className="text-[10px] text-muted-foreground">
                     {selectedConvo.contact_number}
                   </p>
                 </div>
               </div>
+                );
+              })()}
 
               <div className="flex-1 overflow-auto p-4 space-y-3">
                 {loadingMsgs ? (

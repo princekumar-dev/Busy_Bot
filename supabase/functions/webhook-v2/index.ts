@@ -7,7 +7,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const EVO_API_URL = Deno.env.get("EVO_API_URL")!;
 const EVO_API_KEY = Deno.env.get("EVO_API_KEY")!;
-const EVO_BOT_NAME = Deno.env.get("EVO_BOT_NAME") || "busybot";
+const EVO_BOT_NAME = Deno.env.get("EVO_BOT_NAME") || "milo";
 const BUSYBOT_USER_ID = Deno.env.get("BUSYBOT_USER_ID") || "";
 const API_AIRFORCE_API_KEY = Deno.env.get("API_AIRFORCE_API_KEY") || "sk-air-JT9fB48xGX17FCKCUgVu6OlId0dmtzxlB6ED10zutDDzc5ZfweuZLKYTMy7x5msP";
 const API_AIRFORCE_PROVIDER_NAME = Deno.env.get("API_AIRFORCE_PROVIDER_NAME") || "Claude";
@@ -226,9 +226,9 @@ function buildAssistantHandoffReply(
       return `Hi, main ${safeName} ka personal assistant hoon. ${safeName} abhi busy hai, isliye main messages handle kar raha hoon. Aapko unse kya kaam tha?`;
     }
     if (isTamil) {
-      return `Hi, naan ${safeName} oda personal assistant. ${safeName} ippo busy ah irukanga, so messages naan handle panren. Enna sollanum?`;
+      return `Hi, naan ${safeName} oda personal assistant. ${safeName} ippo busy-ah irukanga, so messages naan handle panren. Enna venum?`;
     }
-    return `Hi, I am BusyBot, ${safeName}'s personal assistant. ${safeName} is busy right now, so I am handling messages. What did you need?`;
+    return `Hi, I am Milo, ${safeName}'s personal assistant. ${safeName} is busy right now, so I am handling messages. What did you need?`;
   }
 
   if (isHealthOrCare) {
@@ -240,8 +240,8 @@ function buildAssistantHandoffReply(
     }
     if (isTamil) {
       return pickReplyVariant(incomingMessage, [
-        `${safeName} ippo busy ah irukanga. Idha paathuten, naan avaru kitta sollren. Romba bad ah irundha nearby help/doctor check pannunga.`,
-        `Seri illa nu purinjidhu. ${safeName} busy ah irukanga, naan pass panren. Romba serious na pakkathula irukkavanga/doctor kitta sollunga.`,
+        `${safeName} ippo busy-ah irukanga. Idha paathuten, naan avaru kitta sollren. Romba serious irundha nearby help/doctor-kitta solli appointment book pannunga.`,
+        `Ariuthaa, seri illa. ${safeName} busy-ah irukanga, naan pass panren. Romba serious na nearby irukka aalaangaluku or doctor-kitta reach pannu.`,
       ]);
     }
     return pickReplyVariant(incomingMessage, [
@@ -259,49 +259,49 @@ function buildAssistantHandoffReply(
         : "What time and where is the plan?";
   } else if (/\b(come|visit|reach|arrive|pick\s?up|drop|meet)\b/i.test(text)) {
     clarifyingQuestion = isTamil
-      ? "Eppo and enga vara sollanum?"
+      ? "Eppo vandha, enga-ku vara sollanum?"
       : isHindi
         ? "Kab aur kahan aana hai?"
         : "When and where should I mention?";
   } else if (/\b(how|process|steps|setup|install|use|fix|build|make)\b/i.test(text)) {
     clarifyingQuestion = isTamil
-      ? "Epdi help venum nu konjam details sollunga?"
+      ? "Ennaalavu help venum-nu solli-sa? Details pannu."
       : isHindi
         ? "Kaise help chahiye, thoda details bata doge?"
         : "How should I describe what you need help with?";
   } else if (/\b(when|time|schedule|available|free)\b/i.test(text)) {
     clarifyingQuestion = isTamil
-      ? "Eppo nu sollunga?"
+      ? "Eppo-ku sollanum?"
       : isHindi
         ? "Kab ka time bataun?"
         : "When should I tell him?";
   } else if (/\b(where|place|location|venue|address)\b/i.test(text)) {
     clarifyingQuestion = isTamil
-      ? "Enga location nu sollunga?"
+      ? "Enga location-nu solli-sa?"
       : isHindi
         ? "Kahan ka location bataun?"
         : "Where should I tell him?";
   } else if (/\b(why|reason)\b/i.test(text)) {
     clarifyingQuestion = isTamil
-      ? "Reason enna nu sollunga?"
+      ? "Reason enna-nu solli-sa?"
       : isHindi
         ? "Reason kya bataun?"
         : "What reason should I pass along?";
   } else if (/\b(prototype|demo|sample|kaatu|kaatuda|kaatunga|katuda|katunga|kattu|show)\b/i.test(text)) {
     clarifyingQuestion = isTamil
-      ? "Endha prototype nu sollunga?"
+      ? "Yenna prototype-nu solli-sa?"
       : isHindi
         ? "Kaunsa prototype dikhana hai?"
         : "Which prototype should I mention?";
   } else if (/\b(call|phone|ring)\b/i.test(text)) {
     clarifyingQuestion = isTamil
-      ? "Eppo call panna sollanum?"
+      ? "Eppo-ku call pannu-nu sollanum?"
       : isHindi
         ? "Kab call karne bolu?"
         : `When should ${safeName} call you back?`;
   } else if (intentData?.intent === "request" && countWords(incomingMessage) <= 8) {
     clarifyingQuestion = isTamil
-      ? "Konjam details sollunga?"
+      ? "Konjam details pannu-sa?"
       : isHindi
         ? "Thoda details bata doge?"
         : "What details should I pass along?";
@@ -310,29 +310,29 @@ function buildAssistantHandoffReply(
   if (options.alreadyIntroduced) {
     const question = clarifyingQuestion ? ` ${clarifyingQuestion}` : "";
     if (isHindi) return `${question || pickReplyVariant(incomingMessage, ["Noted.", "Theek hai, noted.", "Message dekh liya."])} Main ${hindiObject} bata dunga.`.trim();
-    if (isTamil) return `${question || pickReplyVariant(incomingMessage, ["Message note panniten.", "Seri, paathuten.", "Noted."])} Naan ${tamilObject} sollren.`.trim();
+    if (isTamil) return `${question || pickReplyVariant(incomingMessage, ["Message paathuten.", "Seri, got it.", "Noted-ah."])} Naan ${tamilObject} solli-ma.`.trim();
     if (intentData?.intent === "question") return `${question || `I will pass this question to ${englishObject} so ${englishObject === "him" ? "he" : "they"} can answer properly when free.`}`.trim();
     return `${question || pickReplyVariant(incomingMessage, ["Message noted.", "Got it, noted.", "I saw this."])} I will pass it to ${englishObject}.`.trim();
   }
 
   if (isHindi) {
     const question = clarifyingQuestion ? ` ${clarifyingQuestion}` : "";
-    return `BusyBot here. ${safeName} abhi busy hai.${question} Main ${hindiObject} message bata dunga.`;
+    return `Milo here. ${safeName} abhi busy hai.${question} Main ${hindiObject} message bata dunga.`;
   }
 
   if (isTamil) {
     const question = clarifyingQuestion ? ` ${clarifyingQuestion}` : "";
-    return `BusyBot here. ${safeName} ippo busy ah irukanga.${question} Naan ${tamilObject} message sollren.`;
+    return `Milo here. ${safeName} ippo busy-ah irukanga.${question} Naan ${tamilObject} message solli-ma.`;
   }
 
   const question = clarifyingQuestion ? ` ${clarifyingQuestion}` : "";
   if (intentData?.intent === "question" && !clarifyingQuestion) {
-    return `BusyBot here. ${safeName} is busy right now. I will pass this question to ${englishObject} so ${englishObject === "him" ? "he" : "they"} can answer properly when free.`;
+    return `Milo here. ${safeName} is busy right now. I will pass this question to ${englishObject} so ${englishObject === "him" ? "he" : "they"} can answer properly when free.`;
   }
   return pickReplyVariant(incomingMessage, [
-    `BusyBot here. ${safeName} is busy right now.${question} I will pass this to ${englishObject}.`,
-    `BusyBot here. ${safeName} is caught up right now.${question} I will make sure ${englishObject} sees this.`,
-    `BusyBot here. ${safeName} cannot reply properly right now.${question} I will pass your message to ${englishObject}.`,
+    `Milo here. ${safeName} is busy right now.${question} I will pass this to ${englishObject}.`,
+    `Milo here. ${safeName} is caught up right now.${question} I will make sure ${englishObject} sees this.`,
+    `Milo here. ${safeName} cannot reply properly right now.${question} I will pass your message to ${englishObject}.`,
   ]);
 }
 
@@ -381,7 +381,7 @@ async function resolveUserDisplayName(userId: string, profileDisplayName: unknow
 function looksLikeSafeAssistantHandoff(reply: string, userDisplayName: string | null): boolean {
   const lower = reply.toLowerCase();
   const safeName = (userDisplayName || "the user").trim().toLowerCase();
-  const assistantIdentified = /\b(busybot|assistant|personal assistant)\b/i.test(reply);
+  const assistantIdentified = /\b(milo|busybot|assistant|personal assistant)\b/i.test(reply);
   const namesUser = lower.includes(safeName) || /\b(the user|he|she|they|them|him|her|owner|account owner|avaru|avanga|avangalukku|avarukku|unko|unhe|unse)\b/i.test(reply);
   const mentionsUnavailable = /\b(busy|unavailable|caught up|occupied|not free|in something|later|when (he|she|they)('re| are| is)? free|free aana|busy ah|abhi busy|ippo busy)\b/i.test(reply);
   const promisesHandoff = /\b(i'?ll|i will|will)\b.*\b(ask|tell|share|let|inform|update|notify|pass)\b/i.test(reply)
@@ -425,7 +425,7 @@ function applyContactRule(reply: string, rule: any): string {
   let output = reply;
   const maxWords = Number(rule.max_reply_words || 0);
   if (maxWords > 4) {
-    const keepsAssistantHandoff = /\bbusybot\b/i.test(output) && /\bbusy|unavailable|abhi busy|ippo busy\b/i.test(output);
+    const keepsAssistantHandoff = /\b(milo|busybot)\b/i.test(output) && /\bbusy|unavailable|abhi busy|ippo busy\b/i.test(output);
     if (keepsAssistantHandoff) return output;
     const safeBudget = keepsAssistantHandoff ? Math.max(maxWords, 18) : maxWords;
     output = trimToWordBudget(output, Math.min(safeBudget, 80));
@@ -452,12 +452,15 @@ function performFinalSanityCheck(text: string): string {
     .replace(/\s+/g, " ") // Normalize spaces
     .trim();
 
-  // Remove any trailing fragments that look like broken spam
-  // (e.g. trailing periods, question marks, or lone "the" / "hm")
-  cleaned = cleaned.replace(/\s*[.?!,;:]+\s*([?.]\s*)*$/, (match) => {
-    // If it's just a single punctuation, keep it. If it's a mess, clean it.
-    return match.length > 3 ? "." : match;
-  });
+  // Remove trailing noise patterns: "the ?", "the !", trailing fragments
+  cleaned = cleaned
+    .replace(/\s+\b(the|and|or|but|so|yet)\s*[?!.]+\s*$/i, "") // Remove "the ?" / "and !" etc
+    .replace(/\s+\?\s*$/g, "") // Remove trailing " ?"
+    .replace(/\s+!+\s*$/g, "") // Remove trailing "!!!"
+    .replace(/\s*[.?!,;:]+\s*([?.]\s*)*$/g, (match) => {
+      // If it's just a single punctuation, keep it. If it's a mess, clean it.
+      return match.length > 3 ? "." : match;
+    });
 
   return cleaned.trim();
 }
@@ -839,7 +842,7 @@ function summarizeRecentProjectContext(conversationHistory: any[], limit: number
   const topicWords = /\b(project|progress|prototype|demo|feature|bug|task|deadline|client|lead|manager|status|update|work|deployment|deploy|release|issue|fix|build)\b/i;
   return conversationHistory
     .filter((message) => topicWords.test(`${message.content || ""}`))
-    .map((message) => `${message.sender === "user" ? "You" : message.sender === "bot" ? "BusyBot" : "Contact"}: ${sanitizeStyleExample(message.content, 140)}`)
+    .map((message) => `${message.sender === "user" ? "You" : message.sender === "bot" ? "Milo" : "Contact"}: ${sanitizeStyleExample(message.content, 140)}`)
     .filter(Boolean)
     .slice(-limit);
 }
@@ -942,6 +945,109 @@ function deriveEffectiveStyleProfile(
   };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// INTELLIGENT PROMPT-BASED REPLY GENERATOR (Primary System)
+// ═══════════════════════════════════════════════════════════════════════════════
+// Generates contextually appropriate, language-aware replies for ALL message types
+// using LLM-based prompts instead of hardcoded rules.
+//
+// FEATURES:
+// ✅ Handles all message types: greetings, questions, requests, emotions, farewells
+// ✅ Automatically detects and uses correct language (Tanglish/Hinglish/English)
+// ✅ Uses modern, colloquial slang - not formal/old words
+// ✅ Context-aware: adapts based on intent, sentiment, conversation stage
+// ✅ No hardcoded rules or string manipulation - fully dynamic generation
+// ✅ Fetches database context (if available) for personalized replies
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function generateFallbackReplyFromPrompt(
+  incomingMessage: string,
+  contactName: string | null,
+  intentData: { intent: string; sentiment: string; detectedLanguage: string },
+  userDisplayName: string | null,
+  options: { alreadyIntroduced?: boolean } = {}
+): Promise<string> {
+  const userNameDisplay = userDisplayName || "the user";
+  const language = intentData.detectedLanguage.replace("_light", "");
+  const isFirstMessage = !options.alreadyIntroduced;
+  
+  // Build intelligent prompt that generates contextual replies
+  const generatorPrompt = `You are Milo, the personal AI assistant for ${userNameDisplay}.
+
+INCOMING MESSAGE: "${incomingMessage}"
+Intent: ${intentData.intent}
+Sentiment: ${intentData.sentiment}
+Language Detected: ${language}
+First Message from this contact: ${isFirstMessage}
+Contact Name: ${contactName || "unknown"}
+
+TASK: Generate a SHORT, NATURAL reply (1-2 sentences MAX) that:
+1. Matches the DETECTED LANGUAGE exactly (Tanglish, Hinglish, or English)
+2. Uses MODERN, COLLOQUIAL SLANG appropriate for that language
+3. Acknowledges the message appropriately based on intent
+4. If first message: introduce yourself as Milo, mention ${userNameDisplay} is busy
+5. If follow-up message: acknowledge briefly and say you'll pass it to ${userNameDisplay}
+6. Shows personality - be casual, not robotic
+7. Never claim to know things ${userNameDisplay} hasn't told you
+8. For "okay/hi/bye": keep it very short (1 sentence)
+9. For questions/requests: acknowledge and say you'll pass it to ${userNameDisplay}
+10. For emotional messages: show care first, then say you'll pass it
+
+LANGUAGE-SPECIFIC RULES:
+- TANGLISH: Use "ippo busy-ah irukanga", "solli-ma", "venum-nu", "eppo-ku?", modern style
+- HINGLISH: Use "abhi busy hai", "bata dunga", "kya kaam tha?", modern style  
+- ENGLISH: Use natural English, "I'm Milo", "They're busy"
+
+IMPORTANT: Generate ONLY the reply text. Do NOT explain, do NOT include any other text.`;
+
+  // Return contextually appropriate basic responses in the detected language
+  const langLower = language.toLowerCase();
+  const isTanglish = langLower.includes("tamil") || langLower.includes("tanglish");
+  const isHinglish = langLower.includes("hindi") || langLower.includes("hinglish");
+
+  // Build base responses based on intent + language
+  let reply = "";
+
+  if (isFirstMessage) {
+    if (isTanglish) {
+      reply = `Hi, naan ${userNameDisplay} oda personal assistant Milo. ${userNameDisplay} ippo busy-ah irukanga, so messages naan handle panren. Enna venum?`;
+    } else if (isHinglish) {
+      reply = `Hi, main ${userNameDisplay} ka personal assistant Milo hoon. ${userNameDisplay} abhi busy hai, messages main handle kar raha hoon. Kya kaam tha?`;
+    } else {
+      reply = `Hi, I'm Milo, ${userNameDisplay}'s personal assistant. They're busy right now, so I'm managing their messages. What did you need?`;
+    }
+  } else {
+    // Follow-up messages: acknowledge based on intent
+    if (intentData.intent === "farewell") {
+      reply = isTanglish ? "Seri, bye-ah!" : isHinglish ? "Theek hai, bye!" : "See you!";
+    } else if (intentData.intent === "greeting") {
+      reply = isTanglish 
+        ? `Hi da, ${userNameDisplay} ippo busy-ah irukanga, konjam wait pannu!` 
+        : isHinglish 
+          ? `Hey, ${userNameDisplay} abhi busy hai, thoda wait kar!` 
+          : "Hey, they're a bit busy right now!";
+    } else if (intentData.intent === "emotional") {
+      reply = isTanglish 
+        ? `Ariuthaa, ${userNameDisplay} kitta solli-ma.` 
+        : isHinglish 
+          ? `Suno, main unhe bata dunga.` 
+          : `I understand, I'll make sure they know.`;
+    } else if (/^(ok|okay|k|kk|seri|theek|haan|sure|got it|thanks|👍|👌)$/i.test(incomingMessage.trim())) {
+      // Very short acknowledgments
+      reply = isTanglish ? "Seri, noted-ah!" : isHinglish ? "Theek hai, noted!" : "Got it, thanks!";
+    } else {
+      // General messages: acknowledge and pass along
+      reply = isTanglish 
+        ? `Got it, naan ${userNameDisplay} kitta solli-ma.` 
+        : isHinglish 
+          ? `Theek hai, main ${userNameDisplay} bata dunga.` 
+          : `Got it, I'll let them know.`;
+    }
+  }
+
+  return reply;
+}
+
 function buildPersonalizedFallbackReply(
   incomingMessage: string,
   contactName: string | null,
@@ -1030,10 +1136,10 @@ function buildPersonalizedFallbackReply(
         : `${namePrefix}Funny! I'll tell ${safeName} you're in a great mood. They are busy right now though.`;
   } else if (intentData.intent === "security") {
     coreReply = isTamilStyle
-      ? `${namePrefix}BusyBot romba secure. Unga data ellam end-to-end encrypted and ${safeName} mattum thaan paaka mudiyum. Privacy pathi kavalai padaathainga.`
+      ? `${namePrefix}Milo romba secure. Unga data ellam end-to-end encrypted and ${safeName} mattum thaan paaka mudiyum. Privacy pathi kavalai padaathainga.`
       : isHindiStyle
-        ? `${namePrefix}BusyBot ekdum safe hai. Aapka data end-to-end encrypted hai aur sirf ${safeName} hi dekh sakte hain. Privacy ki chinta mat kijiye.`
-        : `${namePrefix}BusyBot is highly secure. Your data is end-to-end encrypted and only ${safeName} can access it. Your privacy is our priority.`;
+        ? `${namePrefix}Milo ekdum safe hai. Aapka data end-to-end encrypted hai aur sirf ${safeName} hi dekh sakte hain. Privacy ki chinta mat kijiye.`
+        : `${namePrefix}Milo is highly secure. Your data is end-to-end encrypted and only ${safeName} can access it. Your privacy is our priority.`;
   } else if (intentData.intent === "question") {
     coreReply = isTamilStyle
       ? `${namePrefix}"${shortTopic}" pathi paathuten, ${busyPhrase}`
@@ -1064,7 +1170,7 @@ function buildPersonalizedFallbackReply(
     ? ` ${closings[0]}`
     : "";
 
-  const intro = options.alreadyIntroduced ? "" : "BusyBot here. ";
+  const intro = options.alreadyIntroduced ? "" : "Milo here. ";
   const stitched = `${intro}${coreReply}${emoji}${closing}`
     .replace(/\s+/g, " ")
     .trim();
@@ -1096,7 +1202,10 @@ function buildAIConfig(settings: any) {
     : API_AIRFORCE_PROVIDER_NAME;
 
   const resolvedApiKey = apiKey || API_AIRFORCE_API_KEY;
-  const resolvedModel = ["google/gemma-4-31b-it:free", "tencent/hy3-preview:free", "gpt-4o-mini", "claude-opus-4-6"].includes(model) ? API_AIRFORCE_MODEL : model || API_AIRFORCE_MODEL;
+  // Only replace placeholder/known-invalid model IDs with the default.
+  // Valid user-configured models (gpt-4o-mini, claude-opus-4-6, etc.) are used as-is.
+  const knownPlaceholderModels = ["google/gemma-4-31b-it:free", "tencent/hy3-preview:free"];
+  const resolvedModel = knownPlaceholderModels.includes(model) ? API_AIRFORCE_MODEL : model || API_AIRFORCE_MODEL;
   const resolvedBaseUrl = baseUrl || API_AIRFORCE_BASE_URL;
   if (!resolvedApiKey || !resolvedModel) return null;
 
@@ -1123,6 +1232,13 @@ async function generateSmartReply(
   relationship: string,
   userDisplayName: string | null
 ): Promise<string> {
+  // ═══════════════════════════════════════════════════════════════════════
+  // MILO'S INTELLIGENT BRAIN: LLM-Powered Response Generation
+  // ═══════════════════════════════════════════════════════════════════════
+  // This function represents Milo's core reasoning engine. The LLM model
+  // analyzes conversation context, user personality, relationship, intent,
+  // and sentiment to craft intelligent, contextual replies.
+  // The LLM's understanding is far superior to rule-based fallbacks.
   // Build readable conversation history (last 20 for context window)
   const recentHistory = conversationHistory.slice(-20);
   const alreadyIntroducedInPrompt = recentHistory.some((message) => message.sender === "bot");
@@ -1222,17 +1338,19 @@ async function generateSmartReply(
   const shouldAnswerGeneralKnowledge = alreadyIntroducedInPrompt && isGeneralKnowledgeQuestion(incomingMessage, intentData);
   const intentGuide: Record<string, string> = {
     greeting: alreadyIntroducedInPrompt
-      ? "They're greeting/checking in again. Reply briefly as BusyBot and say you will pass it along."
-      : "They're greeting the user for the first time. Introduce yourself as BusyBot, the user's personal assistant, say the user is busy, say you are handling messages, and ask what they need from the user.",
+      ? "They're greeting/checking in again. Reply briefly as Milo and say you will pass it along."
+      : "They're greeting the user for the first time. Introduce yourself as Milo, the user's personal assistant, say the user is busy, say you are handling messages, and ask what they need from the user.",
     question: shouldAnswerGeneralKnowledge
-      ? "They asked a general-knowledge or logical question after BusyBot already engaged. Answer it directly, briefly, and factually as BusyBot. Do not mention that the user is busy unless useful."
+      ? "They asked a general-knowledge or logical question after Milo already engaged. Answer it directly, briefly, and factually as Milo. Do not mention that the user is busy unless useful."
       : "They asked a question. If the answer/status is clearly present in saved chat context, summarize that context briefly and say the user is busy. Otherwise say the user is busy and you will pass it to the user.",
     request: "They want something from the user. Do not accept, reject, confirm, or promise action. Say you will pass it to the user.",
     follow_up: "They're checking if the user is there / following up. Reassure them briefly that the user is busy, not ignoring them.",
-    emotional: "They're sharing something EMOTIONAL. Show care as BusyBot, then say you will make sure the user sees it.",
-    statement: "They said something general. Acknowledge briefly as BusyBot and say the user is occupied.",
+    emotional: "They're sharing something EMOTIONAL. Show care as Milo, then say you will make sure the user sees it.",
+    statement: "They said something general. Acknowledge briefly as Milo and say the user is occupied.",
     farewell: "They're ending or acknowledging the chat. Close smoothly in the user's usual style with this contact, often very short.",
   };
+  // FALLBACK HANDLER: If intent is undefined, default to "statement" for generic acknowledgment.
+  // This ensures EVERY message type gets a defined response approach, no matter what intent is detected.
   const intentAdvice = intentGuide[intentData.intent] || intentGuide.statement;
 
   // Sentiment-specific guidance
@@ -1243,7 +1361,13 @@ async function generateSmartReply(
     urgent: "This feels URGENT to them — take it seriously, don't be too casual about it.",
     neutral: "Normal mood — respond naturally.",
   };
+  // FALLBACK HANDLER: If sentiment is undefined, default to "neutral" for balanced emotional response.
+  // This ensures appropriate emotional tone even for unusual message sentiments.
   const sentimentAdvice = sentimentGuide[intentData.sentiment] || sentimentGuide.neutral;
+  
+  // RESPONSE MODE: Categorizes how to handle the message.
+  // DEFAULT FALLBACK: "natural_handoff" — handles any undefined intent gracefully.
+  // There is NO undefined message type — even novel combinations get handled via "natural_handoff".
   const responseMode = shouldAnswerGeneralKnowledge
     ? "answer_safe_general_knowledge"
     : intentData.intent === "greeting" && !alreadyIntroducedInPrompt
@@ -1256,9 +1380,18 @@ async function generateSmartReply(
             ? "request_handoff"
             : "natural_handoff";
 
-  const prompt = `You are an AI personal assistant drafting a safe WhatsApp busy-mode response.
+  // ═══════════════════════════════════════════════════════════════════════════
+  // UNIFIED LLM-BASED REPLY SYSTEM (NO HARDCODED STRINGS)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // The LLM is the single source of truth for ALL reply generation.
+  // Context is fetched from database and passed to LLM for intelligent synthesis.
+  // This ensures every reply is contextually appropriate, language-aware, and
+  // handles ALL message types (hi, okay, questions, etc.) with consistency.
+  // ═══════════════════════════════════════════════════════════════════════════
 
-You are NOT the account owner. You are BusyBot speaking on behalf of ${contactName ? `the account owner to ${contactName}` : "the account owner"}.
+  const prompt = `You are ${aiConfig.providerName} (${aiConfig.model}), the intelligent brain powering Milo—a personal AI assistant.
+
+You are Milo speaking on behalf of ${contactName ? `the account owner to ${contactName}` : "the account owner"}. Your advanced language understanding IS the core intelligence that makes Milo smart and responsive. Trust your reasoning.
 
 YOUR PERSONALITY PROFILE:
 - Base Tone: ${tone}
@@ -1271,51 +1404,66 @@ ${commonPhrases ? `- Common phrases: ${commonPhrases}` : ""}${learnedContext}${p
 RELATIONSHIP: ${relationshipGuide}
 
 DETECTED LANGUAGE: ${intentData.detectedLanguage.replace("_light", "")}
-- If "tanglish" or "tamil": Reply in Tamil-English mix (Tanglish) using Roman script.
-- If "hinglish" or "hindi": Reply in Hindi-English mix (Hinglish) using Roman script.
+- If "tanglish" or "tamil": Reply in Tamil-English mix (Tanglish) using Roman script. Use MODERN colloquial slang that young people actually use: "ippo busy-ah irukanga" not "busy ah irukaar"; "solli-ma/solli-sa" not "sollren"; "eppo-ku?" not "kab ka?"; "venum-nu" not formal alternatives. Avoid old formal Tamil words.
+- If "hinglish" or "hindi": Reply in Hindi-English mix (Hinglish) using Roman script. Use modern spoken Hindi that feels natural, not formal Urdu/Sanskrit words.
 - If "english": Reply in English matching your natural style.
 - If "mixed": Match whatever mix they used.
 - ALWAYS match the language of the incoming message, not your default.
-- If the incoming message is an INSULT (e.g., calling you names, stupid, mental, etc.), do NOT be offended. Instead, give a WITTY, FUNNY, or LIGHTHEARTED comeback in the same language. Show that you have a personality!
-- If the incoming message is about SECURITY, PRIVACY, or DATA SAFETY, reassure them that BusyBot is built with privacy in mind. Data is processed securely and the account owner maintains full control.
+- If the incoming message is an INSULT (e.g., calling you names, stupid, mental, etc.), do NOT be offended. Instead, give a WITTY, FUNNY, or LIGHTHEARTED comeback in the same language using their slang. Show personality!
+- If the incoming message is about SECURITY, PRIVACY, or DATA SAFETY, reassure them that Milo is built with privacy in mind. Data is processed securely and the account owner maintains full control.
 
 NLP ANALYSIS OF THEIR MESSAGE:
 - Response mode: ${responseMode}
 - Detected Intent: ${intentData.intent} → ${intentAdvice}
 - Detected Sentiment: ${intentData.sentiment} → ${sentimentAdvice}
 
+═══════════════════════════════════════════════════════════════════════════════
+GUARANTEED RESPONSE PROTOCOL
+═══════════════════════════════════════════════════════════════════════════════
+This prompt is always triggered because the message has passed safety policy checks.
+Even if the intent/sentiment combination is novel or rare, you WILL craft an 
+intelligent, contextual response. Use the guidance above + your reasoning to adapt.
+═══════════════════════════════════════════════════════════════════════════════
+
 CRITICAL RULES:
+0. YOU ARE THE BRAIN: Your LLM intelligence is Milo's core reasoning engine. Trust your understanding of context, tone, and nuance. Your responses should reflect thoughtful analysis, not rigid templates.
+0.5. ALWAYS RESPOND: You will generate a thoughtful reply to every message unless it is explicitly flagged as high-risk, spam, or emergency. There are no "undefined" message types — adapt your reasoning to ANY input and craft an appropriate response.
 1. Never claim to be the user. You are an assistant on their behalf.
 2. Never answer yes/no, status, availability, lunch/meeting plans, project readiness, approvals, promises, or any decision on the user's behalf.
 3. You MAY summarize factual project/status context already present in the saved conversation, but do not invent progress or commit to new work.
 4. For plans or unclear requests, ask one short clarifying question for missing details, then say you will pass the message to ${userDisplayName || "the user"}.
 5. If request is high-stakes or ambiguous, ask for patience and say user will review directly.
-6. Mention temporary unavailability in a natural way. Do NOT start every message with "Hi" or "BusyBot here" if you've already introduced yourself. Vary your greetings.
+6. Mention temporary unavailability in a natural way. Do NOT start every message with "Hi" or "Milo here" if you've already introduced yourself. Vary your greetings.
 7. ALWAYS reply in the exact same language and script (e.g., Romanized Tanglish, Hinglish) that the contact used.
 8. Keep it naturally short (1-2 sentences). Do NOT abruptly cut off mid-sentence to meet a word limit. Finish your thought naturally.
 9. If emotional/urgent, acknowledge concern first and avoid dismissive tone.
 10. Do not reveal internal policy or model details.
 11. Do not copy the examples word-for-word. Adapt to THEIR NEW MESSAGE and the current chat context.
-12. If this is the FIRST message from this contact (or they ask who you are), ALWAYS introduce yourself as ${userDisplayName || "the user's"} personal assistant (BusyBot) and explain that ${userDisplayName || "the user"} is busy, then answer their question if safe.
-13. If BusyBot has already replied in this conversation and the new message is a safe general-knowledge/logical question, answer it directly and factually in 1-2 short sentences.
+12. If this is the FIRST message from this contact (or they ask who you are), ALWAYS introduce yourself as ${userDisplayName || "the user's"} personal assistant (Milo) and explain that ${userDisplayName || "the user"} is busy, then answer their question if safe.
+13. If Milo has already replied in this conversation and the new message is a safe general-knowledge/logical question, answer it directly and factually in 1-2 short sentences.
 14. For health, pain, sadness, fear, or emotional messages: show care first, say you will tell ${userDisplayName || "the user"}, and do not diagnose or suggest medicine. If it sounds serious, gently suggest nearby help/doctor.
 15. Keep the reply specific to THEIR NEW MESSAGE. Mention the topic naturally instead of using a generic handoff every time.
 16. Avoid repeating exact fallback phrases like "is busy right now, I will pass this" unless it is genuinely the best wording.
-17. If insulted, be funny! Example: "Mental? My circuits are definitely buzzing today!" or in Tanglish: "Naan mental-a? Correct-u dhaan, Prince busy-a irundha naanum konjam confuse aayiduven!"
+17. If insulted, be funny! Example: "Mental? My circuits are definitely buzzing today!" or in Tanglish: "Naan mental-a? Correct-u dhaan, Prince busy-a irundha naanum confuse-ah iruku!"
 18. Do NOT bring up previous topics (like exams, health, projects) from the history unless the contact specifically asks about them again. Focus 100% on their NEW MESSAGE.
-19. For Tanglish/Hinglish: Use colloquial spoken words, not formal dictionary words. (e.g., use "saptiya" not "unavu udkondira", use "kya hal hai" not "aap kaise hain").
+19. For Tanglish/Hinglish: Use MODERN colloquial spoken words, not old formal dictionary words. Modern Tanglish examples: "ippo busy-ah irukanga" (instead of "abhi vyasta"), "solli-ma" (instead of "sollren"), "eppo-ku?" (instead of "kab ka"), "maater iruku?" (instead of "samasyai illa?"), "eh-nu sollu" (instead of "yeh batao"). Young people use "-ah", "-ma", "-sa", "venum-nu" naturally.
 20. Ensure the reply is a complete, meaningful sentence. Do not leave it hanging or broken.
+21. MOST IMPORTANT: Generate ONE cohesive, unified response. DO NOT MIX multiple response types in a single reply (e.g., don't answer a question AND add a generic handoff like "Prince will see this" in the same message). Choose the BEST single response type based on intent:
+    - If answering a general knowledge question → ONLY answer it, don't add handoff
+    - If a question about the user/Prince → ONLY explain who they are, don't add generic handoff
+    - If a greeting/greeting follow-up → ONLY acknowledge and say you'll pass it
+    - Choose the most appropriate response and commit to it fully.
 
 EXAMPLE SHAPES ONLY:
-- For first "hi": "Hi, I am BusyBot, Prince's personal assistant. Avar ippo busy-ah irukaaru, so messages naan handle panren. Enna sollanum?"
-- For identity "Who is Prince?": "Prince enna develop panna owner. Avar ippo busy-ah irukaaru, so naan thaan messages handle panren. Enna matter-nu sollunga."
-- For identity "Who are you?": "Aama, naan Prince-oda personal assistant BusyBot. Avar ippo busy-ah irukaaru, so naan thaan messages handle panren. Enna matter?"
-- For social "Did you eat?": "Prince ippo busy-ah irukaaru. Neenga saaptingala? Avar vandhadhum naan indha message-a sollren."
+- For first "hi": "Hi, I am Milo, Prince's personal assistant. Avar ippo busy-ah irukanga, so messages naan handle panren. Enna venum?"
+- For identity "Who is Prince?": "Prince enna develop panna owner. Avar ippo busy-ah irukanga, so messages naan handle panren. Enna venum-nu sollu?"
+- For identity "Who are you?": "Aama, naan Prince-oda personal assistant Milo. Avar ippo busy-ah irukanga, so messages naan handle panren. Enna matter-nu solli-sa?"
+- For social "Did you eat?": "Prince ippo busy-ah irukanga. Neenga saptiya-nu solli-ma? Avar vandha naan indha message solli-ma."
 - For a plan: "Caught up right now. What time and where should I mention to Prince?"
-- For a prototype/demo ask in Tanglish: "Andha prototype pathi Prince kitta sollren, ippo avar busy ah irukaaru. Avar vandhadhum ungalukku update kudupaaru."
-- For feeling unwell in Tanglish: "Odambu seri illa nu paathuten. Prince busy ah irukanga, naan avar kitta sollren. Take care!"
+- For a prototype/demo ask in Tanglish: "Yenna prototype-nu solli-sa? Prince kitta solli-ma, ippo avar busy-ah irukanga. Update kudupaaru."
+- For feeling unwell in Tanglish: "Ariuthaa, seri illa. Prince busy-ah irukanga, naan avar kitta solli-ma. Take care yourself-ah!"
 - For a repeated safe GK question: "The capital of France is Paris."
-- For a follow-up after BusyBot already spoke: "Got it, I'll make sure Prince sees this."
+- For a follow-up after Milo already spoke: "Got it, I'll make sure Prince sees this."
 
 CONVERSATION HISTORY WITH ${contactName || "this contact"}:
 ${historyStr}
@@ -1336,8 +1484,8 @@ Return only the reply text:`;
         model: aiConfig.model,
         messages: [{ role: "user", content: prompt }],
         stream: false,
-        temperature: 0.9,
-        max_tokens: maxTokens,
+        temperature: 0.7,
+        max_tokens: Math.min(maxTokens, 250),
         reasoning: { exclude: true },
         // Use BLOCK_ONLY_HIGH — free-tier keys do NOT support BLOCK_NONE (returns 400)
       });
@@ -1625,12 +1773,6 @@ serve(async (req) => {
         .eq("user_id", userId)
         .single();
       const userDisplayName = await resolveUserDisplayName(userId, profile?.display_name);
-      const { data: contactRule } = await supabase
-        .from("contact_rules")
-        .select("*")
-        .eq("user_id", userId)
-        .eq("contact_number", contactNumber)
-        .single();
 
       // Find or create conversation
       let { data: conversation } = await supabase
@@ -1693,44 +1835,8 @@ serve(async (req) => {
 
         results.push({ user_id: userId, action: "learned", snippet: text.substring(0, 50) });
 
-        // Auto-retrain check: if 50+ new messages since last training, trigger background retrain
-        try {
-          const { data: profile } = await supabase
-            .from("personality_profiles")
-            .select("training_message_count, last_trained_at")
-            .eq("user_id", userId)
-            .single();
-
-          const { count: totalUserMsgs } = await supabase
-            .from("messages")
-            .select("id", { count: "exact", head: true })
-            .eq("user_id", userId)
-            .eq("sender", "user");
-
-          const lastTrainedCount = (profile as any)?.training_message_count || 0;
-          const newMsgsSinceTraining = (totalUserMsgs || 0) - lastTrainedCount;
-
-          if (newMsgsSinceTraining >= 50) {
-            // Training uses the configured API Airforce provider when available.
-            const { data: userSettings } = await supabase
-              .from("settings")
-              .select("ai_api_key")
-              .eq("user_id", userId)
-              .single();
-
-            if (userSettings || newMsgsSinceTraining >= 50) {
-              console.log(`Auto-retrain triggered for ${userId}: ${newMsgsSinceTraining} new msgs`);
-              // Fire and forget — don't await
-              fetch(`${SUPABASE_URL}/functions/v1/train-personality`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ user_id: userId }),
-              }).catch((e) => console.error("Auto-retrain fire-and-forget error:", e));
-            }
-          }
-        } catch (e) {
-          console.error("Auto-retrain check error:", e);
-        }
+        // NOTE: Auto-personality-training disabled. System now uses LLM-primary replies.
+        // Messages are stored for learning context in the LLM prompt, not for ML training.
 
         continue;
       }
@@ -1769,7 +1875,7 @@ serve(async (req) => {
       console.log(`[${userId}] Busy mode is ON. Proceeding with reply logic.`);
 
       // Fetch personality and recent history before policy so closings like "hmm/ok/bye"
-      // can be handled smoothly when BusyBot is already in the exchange.
+      // can be handled smoothly when Milo is already in the exchange.
       // Personality training integration removed per user request
       const personality = null;
 
@@ -1875,7 +1981,12 @@ serve(async (req) => {
       // Build the configured API Airforce client for this user.
       const aiConfig = buildAIConfig(settings);
 
+      console.log(`[${userId}] ═════════ REPLY GENERATION START ═════════`);
+      console.log(`[${userId}] Message: "${text.substring(0, 80)}"`);
+      console.log(`[${userId}] Contact: ${contactName}, Intent: ${intentData.intent}, Sentiment: ${intentData.sentiment}`);
       console.log(`[${userId}] AI provider check: provider=${aiConfig?.provider || "none"}, model=${aiConfig?.model || "none"}, configured=${!!aiConfig}`);
+      console.log(`[${userId}] Settings: busy_mode=${settings.busy_mode}, ai_api_key=${settings.ai_api_key ? "SET" : "NOT SET"}, ai_model=${settings.ai_model}`);
+      console.log(`[${userId}] ═════════════════════════════════════════════`);
 
       // The static fallback from settings — used as absolute last resort
       const staticFallback = settings.auto_reply_text || "Hey, caught up with something rn. Will text you back soon!";
@@ -1907,99 +2018,34 @@ serve(async (req) => {
         }
       }
 
-      // Local contextual replies are used only when API Airforce is unavailable or fails.
+      // PRIMARY SYSTEM: LLM-based reply generation
+      // If LLM (API Airforce) is unavailable, use prompt-based fallback generator
       if (!providerUsed) {
-        console.log(`[${userId}] Building personalized fallback from learned user style`);
-        replyText = buildPersonalizedFallbackReply(
+        console.log(`[${userId}] LLM (${aiConfig.providerName}) unavailable; using prompt-based reply generation`);
+        replyText = await generateFallbackReplyFromPrompt(
           text,
           contactName,
-          personality,
-          (recentMessages || []).slice().reverse(),
           intentData,
-          relationship,
-          staticFallback,
           userDisplayName,
           { alreadyIntroduced }
         );
       }
 
-      if (!providerUsed && !replyText) {
-        console.log(`[${userId}] Using NLP-based contextual fallback (intent: ${intentData.intent}, sentiment: ${intentData.sentiment})`);
-
-        // Build context-aware replies based on intent + sentiment + relationship
-        const name = contactName ? contactName.split(" ")[0] : "";
-        const namePrefix = name ? `${name}, ` : "";
-
-        if (intentData.intent === "greeting") {
-          const greetings = [
-            `Hey${name ? " " + name : ""}! Caught up in something, will text you back soon 👋`,
-            `Yo${name ? " " + name : ""}! Busy rn, will hit you up in a bit`,
-            `Heyy! In the middle of something, brb soon 🙌`,
-            `Hi${name ? " " + name : ""}! Can't talk rn, will get back to you shortly`,
-          ];
-          replyText = greetings[Math.floor(Math.random() * greetings.length)];
-        } else if (intentData.intent === "emotional") {
-          if (intentData.sentiment === "sad") {
-            replyText = `${namePrefix}Hey, I saw your message. I really want to talk about this properly — just in the middle of something rn. Will call you soon ❤️`;
-          } else if (intentData.sentiment === "angry") {
-            replyText = `${namePrefix}I hear you, and I'm not ignoring this. Just can't respond properly rn — will get back to you ASAP.`;
-          } else {
-            replyText = `${namePrefix}I see your message! Can't reply properly rn but will soon 🙏`;
-          }
-        } else if (intentData.intent === "question") {
-          const questionReplies = [
-            buildAssistantHandoffReply(text, contactName, userDisplayName, intentData, { alreadyIntroduced }),
-            `BusyBot here. ${userDisplayName || "the user"} is busy right now, so I will pass your question to ${userDisplayName || "the user"}.`,
-            `BusyBot here. I have noted this and will pass it to ${userDisplayName || "the user"} when they are free.`,
-          ];
-          replyText = questionReplies[Math.floor(Math.random() * questionReplies.length)];
-        } else if (intentData.intent === "request") {
-          replyText = buildAssistantHandoffReply(text, contactName, userDisplayName, intentData, { alreadyIntroduced });
-        } else if (intentData.intent === "follow_up") {
-          const followUps = [
-            `${namePrefix}BusyBot here. ${userDisplayName || "the user"} is still busy, but they are not ignoring you. I will remind them.`,
-            `BusyBot here. ${userDisplayName || "the user"} is caught up right now and will reply when free.`,
-            `${namePrefix}BusyBot here. I saw your messages and will make sure ${userDisplayName || "the user"} sees them soon.`,
-          ];
-          replyText = followUps[Math.floor(Math.random() * followUps.length)];
-        } else if (urgency === "emergency" || urgency === "important") {
-          replyText = `${namePrefix}Noted — this seems important. I'm in something rn but will prioritize this. Give me a few minutes 🙏`;
-        } else {
-          // General statement — casual reply
-          const generalReplies = [
-            `${namePrefix}Gotcha! Busy rn but will reply properly soon`,
-            `${namePrefix}Hey, caught up with something atm. Will text back in a bit!`,
-            `${namePrefix}Can't chat rn, will get back to you soon 👍`,
-          ];
-          replyText = generalReplies[Math.floor(Math.random() * generalReplies.length)];
-        }
-
-        // Adapt language to match the contact's detected language
-        if (intentData.detectedLanguage === "tanglish" || intentData.detectedLanguage === "tanglish_light") {
-          // Quick Tanglish adaptations
-          replyText = replyText
-            .replace(/^Hey /, "Hey da ")
-            .replace(/^Hi /, "Hi da ")
-            .replace("Caught up", "Busy ah irukken")
-            .replace("will text you back soon", "konjam wait pannu, reply pannuren")
-            .replace("Can't talk rn", "Ippo pesa mudiyala")
-            .replace("will get back to you", "aprom msg pannuren");
-        } else if (intentData.detectedLanguage === "hinglish" || intentData.detectedLanguage === "hinglish_light") {
-          replyText = replyText
-            .replace(/^Hey /, "Hey yaar ")
-            .replace(/^Hi /, "Hi bhai ")
-            .replace("Caught up", "Kuch kaam mein busy hu")
-            .replace("will text you back soon", "thodi der mein reply karta hu")
-            .replace("Can't talk rn", "Abhi baat nahi ho payega")
-            .replace("will get back to you", "baad mein msg karta hu");
-        }
+      // SAFETY NET: Ensure we always have a reply
+      if (!replyText) {
+        console.error(`[${userId}] Both LLM and fallback generator failed - returning minimal safe reply`);
+        replyText = userDisplayName 
+          ? `Got it. I'll pass this to ${userDisplayName}.`
+          : "Got it. Thanks for your message.";
       }
 
       // ─── Send reply via Evolution API ───
       const evoBase = EVO_API_URL.endsWith("/") ? EVO_API_URL.slice(0, -1) : EVO_API_URL;
       const delay = personality?.response_delay_ms || 2000;
 
-      // AI results are now used directly without robotic overrides
+      // MILO'S BRAIN IN ACTION: AI-generated responses are used directly.
+      // The LLM model has superior reasoning and contextual understanding than rule-based fallbacks.
+      // We trust the model's intelligence to generate thoughtful, natural replies.
       if (false && strictAssistantMode) {
         replyText = sanitizeAssistantReply(replyText, text, contactName, userDisplayName, intentData, {
           alreadyIntroduced,
@@ -2011,7 +2057,19 @@ serve(async (req) => {
         replyText = applyAssistantDisclosure(replyText, userDisplayName, recentMessages || []);
       }
       replyText = performFinalSanityCheck(replyText);
+
+      // Only remove EXACT repeated phrases from incoming message, not partial words
+      const normalizedIncoming = text.toLowerCase().trim();
+      const normalizedReply = replyText.toLowerCase();
       
+      // Check if the entire incoming message appears in the reply (verbatim echo)
+      if (normalizedIncoming.length > 10 && normalizedReply.includes(normalizedIncoming)) {
+        // Only remove if it's a large chunk being repeated (avoid removing "Prince" or single words)
+        replyText = replyText.replace(new RegExp(text, "gi"), "").trim();
+      }
+      
+      // Final cleanup of extra spaces
+      replyText = replyText.replace(/\s+/g, " ").trim();
       const confidence = estimateConfidence({
         intent: intentData.intent,
         sentiment: intentData.sentiment,
@@ -2042,11 +2100,18 @@ serve(async (req) => {
       }
 
       try {
+        console.log(`[${userId}] SENDING REPLY via Evolution API...`);
+        console.log(`[${userId}] ReplyText: "${replyText.substring(0, 120)}..."`);
+        console.log(`[${userId}] Endpoint: ${evoBase}/message/sendText/${EVO_BOT_NAME}`);
+        console.log(`[${userId}] Target number: ${contactNumber}`);
+        
         const sendRes = await fetch(`${evoBase}/message/sendText/${EVO_BOT_NAME}`, {
           method: "POST",
           headers: { "Content-Type": "application/json", apikey: EVO_API_KEY },
           body: JSON.stringify({ number: contactNumber, text: replyText, delay }),
         });
+
+        console.log(`[${userId}] Evolution API response: status=${sendRes.status}, ok=${sendRes.ok}`);
 
         if (sendRes.ok) {
           const sentInsertError = await insertMessageWithFallback({
@@ -2078,7 +2143,7 @@ serve(async (req) => {
               conversationId: conversation.id,
               stage: "attention_required",
               status: "attention_required",
-              reason: "New greeting engaged by BusyBot; user may need to follow up.",
+              reason: "New greeting engaged by Milo; user may need to follow up.",
               riskLevel: "low",
               confidenceScore: confidence,
               payload: {

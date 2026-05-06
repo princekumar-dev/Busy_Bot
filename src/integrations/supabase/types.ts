@@ -153,6 +153,8 @@ export type Database = {
       }
       contact_rules: {
         Row: {
+          behavior: string | null
+          contact_name: string | null
           contact_number: string
           created_at: string
           emoji_level: string
@@ -164,6 +166,8 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          behavior?: string | null
+          contact_name?: string | null
           contact_number: string
           created_at?: string
           emoji_level?: string
@@ -175,6 +179,8 @@ export type Database = {
           user_id: string
         }
         Update: {
+          behavior?: string | null
+          contact_name?: string | null
           contact_number?: string
           created_at?: string
           emoji_level?: string
@@ -345,6 +351,7 @@ export type Database = {
           emergency_notify: boolean
           gemini_api_key: string | null
           id: string
+          reply_tone: string
           strict_assistant_mode: boolean
           updated_at: string
           user_id: string
@@ -363,6 +370,7 @@ export type Database = {
           emergency_notify?: boolean
           gemini_api_key?: string | null
           id?: string
+          reply_tone?: string
           strict_assistant_mode?: boolean
           updated_at?: string
           user_id: string
@@ -381,6 +389,7 @@ export type Database = {
           emergency_notify?: boolean
           gemini_api_key?: string | null
           id?: string
+          reply_tone?: string
           strict_assistant_mode?: boolean
           updated_at?: string
           user_id?: string

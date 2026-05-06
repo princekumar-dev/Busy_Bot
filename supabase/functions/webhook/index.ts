@@ -8,6 +8,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const EVO_API_URL = Deno.env.get("EVO_API_URL")!;
 const EVO_API_KEY = Deno.env.get("EVO_API_KEY")!;
 const EVO_BOT_NAME = Deno.env.get("EVO_BOT_NAME") || "busybot";
+const ASSISTANT_DISPLAY_NAME = Deno.env.get("ASSISTANT_DISPLAY_NAME") || "Milo";
 const BUSYBOT_USER_ID = Deno.env.get("BUSYBOT_USER_ID") || "";
 const API_AIRFORCE_API_KEY = Deno.env.get("API_AIRFORCE_API_KEY") || "sk-air-JT9fB48xGX17FCKCUgVu6OlId0dmtzxlB6ED10zutDDzc5ZfweuZLKYTMy7x5msP";
 const API_AIRFORCE_PROVIDER_NAME = Deno.env.get("API_AIRFORCE_PROVIDER_NAME") || "Claude";
@@ -76,6 +77,10 @@ function classifyIntent(text: string): {
   // Security / Privacy (English + Hindi + Tamil)
   const securityPatterns = /\b(secure|safety|safe|privacy|data|encryption|hack|leak|protected|security|surakshit|pukaappu|bhadram|bhadra|password|access)\b/i;
   if (securityPatterns.test(t)) intent = "security";
+
+  // Identity / bot capability questions (English + Hinglish + Tanglish)
+  const identityPatterns = /\b(who are you|what are you|about yourself|tell me about you|what do you do|are you bot|are you ai|tum kaun|tu kaun|aap kaun|kya karte ho|tum kya karte|kon ho|neenga yaaru|nee yaaru|yaru da|enna panra|enna pannuva|un vela enna|what is milo|who is milo|milo kaun|milo yaaru)\b/i;
+  if (identityPatterns.test(t)) intent = "identity";
 
   // ─── Sentiment detection ───
   let sentiment = "neutral";
@@ -223,12 +228,12 @@ function buildAssistantHandoffReply(
 
   if (isFirstMessage) {
     if (isHindi) {
-      return `Hi, main ${safeName} ka assistant hoon. ${safeName} abhi thoda busy hain, main unhe message pass kar dunga. Kya hua?`;
+      return `Hi, main ${ASSISTANT_DISPLAY_NAME} hoon, ${safeName} ka personal assistant. ${safeName} abhi thoda busy hain, main unhe message pass kar dunga. Kya hua?`;
     }
     if (isTamil) {
-      return `Hi, naan ${safeName} oda assistant. ${safeName} ippo busy-ah irukanga, naan avar kitta sollren. Enna matter?`;
+      return `Hi, naan ${ASSISTANT_DISPLAY_NAME}, ${safeName} oda personal assistant. ${safeName} ippo busy-ah irukanga, naan avar kitta sollren. Enna matter?`;
     }
-    return `Hi, I'm ${safeName}'s assistant. ${safeName} is tied up right now, but I'll make sure they see your message. What's up?`;
+    return `Hi, I'm ${ASSISTANT_DISPLAY_NAME}, ${safeName}'s personal assistant. ${safeName} is tied up right now, but I'll make sure they see your message. What's up?`;
   }
 
   if (isHealthOrCare) {
@@ -317,22 +322,22 @@ function buildAssistantHandoffReply(
 
   if (isHindi) {
     const question = clarifyingQuestion ? ` ${clarifyingQuestion}` : "";
-    return `BusyBot here. ${safeName} abhi busy hai.${question} Main ${hindiObject} message bata dunga.`;
+    return `${ASSISTANT_DISPLAY_NAME} here. ${safeName} abhi busy hai.${question} Main ${hindiObject} message bata dunga.`;
   }
 
   if (isTamil) {
     const question = clarifyingQuestion ? ` ${clarifyingQuestion}` : "";
-    return `BusyBot here. ${safeName} ippo busy ah irukanga.${question} Naan ${tamilObject} message sollren.`;
+    return `${ASSISTANT_DISPLAY_NAME} here. ${safeName} ippo busy ah irukanga.${question} Naan ${tamilObject} message sollren.`;
   }
 
   const question = clarifyingQuestion ? ` ${clarifyingQuestion}` : "";
   if (intentData?.intent === "question" && !clarifyingQuestion) {
-    return `BusyBot here. ${safeName} is busy right now. I will pass this question to ${englishObject} so ${englishObject === "him" ? "he" : "they"} can answer properly when free.`;
+    return `${ASSISTANT_DISPLAY_NAME} here. ${safeName} is busy right now. I will pass this question to ${englishObject} so ${englishObject === "him" ? "he" : "they"} can answer properly when free.`;
   }
   return pickReplyVariant(incomingMessage, [
-    `BusyBot here. ${safeName} is busy right now.${question} I will pass this to ${englishObject}.`,
-    `BusyBot here. ${safeName} is caught up right now.${question} I will make sure ${englishObject} sees this.`,
-    `BusyBot here. ${safeName} cannot reply properly right now.${question} I will pass your message to ${englishObject}.`,
+    `${ASSISTANT_DISPLAY_NAME} here. ${safeName} is busy right now.${question} I will pass this to ${englishObject}.`,
+    `${ASSISTANT_DISPLAY_NAME} here. ${safeName} is caught up right now.${question} I will make sure ${englishObject} sees this.`,
+    `${ASSISTANT_DISPLAY_NAME} here. ${safeName} cannot reply properly right now.${question} I will pass your message to ${englishObject}.`,
   ]);
 }
 
@@ -381,7 +386,7 @@ async function resolveUserDisplayName(userId: string, profileDisplayName: unknow
 function looksLikeSafeAssistantHandoff(reply: string, userDisplayName: string | null): boolean {
   const lower = reply.toLowerCase();
   const safeName = (userDisplayName || "the user").trim().toLowerCase();
-  const assistantIdentified = /\b(busybot|assistant|personal assistant)\b/i.test(reply);
+  const assistantIdentified = /\b(milo|busybot|assistant|personal assistant)\b/i.test(reply);
   const namesUser = lower.includes(safeName) || /\b(the user|he|she|they|them|him|her|owner|account owner|avaru|avanga|avangalukku|avarukku|unko|unhe|unse)\b/i.test(reply);
   const mentionsUnavailable = /\b(busy|unavailable|caught up|occupied|not free|in something|later|when (he|she|they)('re| are| is)? free|free aana|busy ah|abhi busy|ippo busy)\b/i.test(reply);
   const promisesHandoff = /\b(i'?ll|i will|will)\b.*\b(ask|tell|share|let|inform|update|notify|pass)\b/i.test(reply)
@@ -425,7 +430,7 @@ function applyContactRule(reply: string, rule: any): string {
   let output = reply;
   const maxWords = Number(rule.max_reply_words || 0);
   if (maxWords > 4) {
-    const keepsAssistantHandoff = /\bbusybot\b/i.test(output) && /\bbusy|unavailable|abhi busy|ippo busy\b/i.test(output);
+    const keepsAssistantHandoff = /\b(milo|busybot)\b/i.test(output) && /\bbusy|unavailable|abhi busy|ippo busy\b/i.test(output);
     if (keepsAssistantHandoff) return output;
     const safeBudget = keepsAssistantHandoff ? Math.max(maxWords, 18) : maxWords;
     output = trimToWordBudget(output, Math.min(safeBudget, 80));
@@ -530,6 +535,7 @@ async function ensureSettingsForFirstUser() {
     voice_reply_enabled: false,
     auto_reply_text: "I am currently busy. I will get back to you soon.",
     emergency_notify: true,
+    reply_tone: "friendly",
   };
 
   const { error: settingsInsertError } = await supabase
@@ -631,6 +637,18 @@ function normalizeWhatsAppNumber(jidOrNumber: unknown): string {
     .replace(/@c\.us$/i, "")
     .replace(/@lid$/i, "")
     .replace(/[^\d+]/g, "");
+}
+
+function getContactNumberLookupVariants(contactNumber: string): string[] {
+  const normalized = normalizeWhatsAppNumber(contactNumber);
+  const digitsOnly = normalized.replace(/\D/g, "");
+  const variants = new Set<string>();
+  if (normalized) variants.add(normalized);
+  if (digitsOnly) {
+    variants.add(digitsOnly);
+    variants.add(`+${digitsOnly}`);
+  }
+  return [...variants];
 }
 
 function shouldSkipRemoteJid(remoteJid: string): { skip: boolean; reason?: string } {
@@ -851,7 +869,7 @@ function summarizeRecentProjectContext(conversationHistory: any[], limit: number
   const topicWords = /\b(project|progress|prototype|demo|feature|bug|task|deadline|client|lead|manager|status|update|work|deployment|deploy|release|issue|fix|build)\b/i;
   return conversationHistory
     .filter((message) => topicWords.test(`${message.content || ""}`))
-    .map((message) => `${message.sender === "user" ? "You" : message.sender === "bot" ? "BusyBot" : "Contact"}: ${sanitizeStyleExample(message.content, 140)}`)
+    .map((message) => `${message.sender === "user" ? "You" : message.sender === "bot" ? ASSISTANT_DISPLAY_NAME : "Contact"}: ${sanitizeStyleExample(message.content, 140)}`)
     .filter(Boolean)
     .slice(-limit);
 }
@@ -1042,10 +1060,16 @@ function buildPersonalizedFallbackReply(
         : `${namePrefix}Funny! I'll tell ${safeName} you're in a great mood. They are busy right now though.`;
   } else if (intentData.intent === "security") {
     coreReply = isTamilStyle
-      ? `${namePrefix}BusyBot romba secure. Unga data ellam end-to-end encrypted and ${safeName} mattum thaan paaka mudiyum. Privacy pathi kavalai padaathainga.`
+      ? `${namePrefix}naan ${ASSISTANT_DISPLAY_NAME}. Saved contacts-ku mattum, busy mode on irundha mattum reply pannuren. Private details or passwords share panna vendaam; ${safeName} kitta pass pannuren.`
       : isHindiStyle
-        ? `${namePrefix}BusyBot ekdum safe hai. Aapka data end-to-end encrypted hai aur sirf ${safeName} hi dekh sakte hain. Privacy ki chinta mat kijiye.`
-        : `${namePrefix}BusyBot is highly secure. Your data is end-to-end encrypted and only ${safeName} can access it. Your privacy is our priority.`;
+        ? `${namePrefix}main ${ASSISTANT_DISPLAY_NAME} hoon. Sirf saved auto-reply contacts ko, busy mode on hone par reply karta hoon. Sensitive info ya passwords share mat kijiye; main ${safeName} ko message pass kar dunga.`
+        : `${namePrefix}I'm ${ASSISTANT_DISPLAY_NAME}. I only reply to saved auto-reply contacts when busy mode is on. Please do not share passwords or private codes here; I can pass your message to ${safeName}.`;
+  } else if (intentData.intent === "identity") {
+    coreReply = isTamilStyle
+      ? `${namePrefix}naan ${ASSISTANT_DISPLAY_NAME}, ${safeName} oda AI personal assistant. ${safeName} busy ah irukkum bodhu messages understand panni, safe ah reply pannuren or avar kitta pass pannuren.`
+      : isHindiStyle
+        ? `${namePrefix}main ${ASSISTANT_DISPLAY_NAME}, ${safeName} ka AI personal assistant hoon. ${safeName} busy hote hain tab main messages samajh ke safe reply karta hoon ya unko pass kar deta hoon.`
+        : `${namePrefix}I'm ${ASSISTANT_DISPLAY_NAME}, ${safeName}'s AI personal assistant. When ${safeName} is busy, I understand messages, reply safely when allowed, or pass things to them.`;
   } else if (intentData.intent === "question") {
     coreReply = isTamilStyle
       ? `${namePrefix}"${shortTopic}" pathi paathuten, ${busyPhrase}`
@@ -1076,7 +1100,7 @@ function buildPersonalizedFallbackReply(
     ? ` ${closings[0]}`
     : "";
 
-  const intro = options.alreadyIntroduced ? "" : "BusyBot here. ";
+  const intro = options.alreadyIntroduced ? "" : `${ASSISTANT_DISPLAY_NAME} here. `;
   const stitched = `${intro}${coreReply}${emoji}${closing}`
     .replace(/\s+/g, " ")
     .trim();
@@ -1124,6 +1148,25 @@ function buildAIConfig(settings: any) {
   };
 }
 
+function normalizeReplyTone(value: unknown): string {
+  const tone = `${value || "friendly"}`.trim().toLowerCase().replace(/[^a-z_ -]/g, "");
+  const allowed = new Set(["friendly", "professional", "casual", "warm", "concise", "playful"]);
+  return allowed.has(tone) ? tone : "friendly";
+}
+
+function getReplyToneGuide(replyTone: string): string {
+  const tone = normalizeReplyTone(replyTone);
+  const guides: Record<string, string> = {
+    friendly: "Friendly, helpful, calm, and natural. Sound like a capable personal assistant.",
+    professional: "Professional, polished, respectful, and clear. Avoid slang unless the contact uses it first.",
+    casual: "Casual, relaxed, and human. Light slang is fine, but keep the assistant role clear.",
+    warm: "Warm, caring, and reassuring. Be especially thoughtful with emotional messages.",
+    concise: "Brief and direct. Prefer one short sentence unless the message needs care or clarification.",
+    playful: "Light, witty, and friendly. Never be rude, and do not make jokes about serious messages.",
+  };
+  return guides[tone] || guides.friendly;
+}
+
 async function generateSmartReply(
   incomingMessage: string,
   contactName: string | null,
@@ -1133,6 +1176,7 @@ async function generateSmartReply(
   fallbackText: string,
   intentData: { intent: string; sentiment: string; detectedLanguage: string },
   relationship: string,
+  replyTone: string,
   userDisplayName: string | null
 ): Promise<string> {
   // Build readable conversation history (last 20 for context window)
@@ -1145,9 +1189,9 @@ async function generateSmartReply(
   const historyStr =
     historyLines.join("\n") || "(First message from this contact)";
 
-  // Auto-derive style for this specific contact from trained data + manual overrides.
+  // Keep reply style controlled by the user's selected assistant tone, not by user imitation.
   const effective = deriveEffectiveStyleProfile(personality, contactName, relationship);
-  const tone = effective.tone || "casual";
+  const tone = normalizeReplyTone(replyTone || effective.tone);
   const avgLength = effective.avgLength || 15;
   const useEmoji = effective.useEmoji;
   const commonPhrases = effective.commonPhrases.join(", ");
@@ -1234,17 +1278,19 @@ async function generateSmartReply(
   const shouldAnswerGeneralKnowledge = alreadyIntroducedInPrompt && isGeneralKnowledgeQuestion(incomingMessage, intentData);
   const intentGuide: Record<string, string> = {
     greeting: alreadyIntroducedInPrompt
-      ? "They're greeting/checking in again. Reply briefly as BusyBot and say you will pass it along."
-      : "They're greeting the user for the first time. Introduce yourself as BusyBot, the user's personal assistant, say the user is busy, say you are handling messages, and ask what they need from the user.",
+      ? `They're greeting/checking in again. Reply briefly as ${ASSISTANT_DISPLAY_NAME} and say you will pass it along.`
+      : `They're greeting the user for the first time. Introduce yourself as ${ASSISTANT_DISPLAY_NAME}, the user's personal assistant, say the user is busy, say you are handling messages, and ask what they need from the user.`,
     question: shouldAnswerGeneralKnowledge
-      ? "They asked a general-knowledge or logical question after BusyBot already engaged. Answer it directly, briefly, and factually as BusyBot. Do not mention that the user is busy unless useful."
+      ? `They asked a general-knowledge or logical question after ${ASSISTANT_DISPLAY_NAME} already engaged. Answer it directly, briefly, and factually as ${ASSISTANT_DISPLAY_NAME}. Do not mention that the user is busy unless useful.`
       : "They asked a question. If the answer/status is clearly present in saved chat context, summarize that context briefly and say the user is busy. Otherwise say the user is busy and you will pass it to the user.",
     request: "They want something from the user. Do not accept, reject, confirm, or promise action. Say you will pass it to the user.",
     follow_up: "They're checking if the user is there / following up. Reassure them briefly that the user is busy, not ignoring them.",
-    emotional: "They're sharing something EMOTIONAL. Show care as BusyBot, then say you will make sure the user sees it.",
-    statement: "They said something general. Acknowledge briefly as BusyBot and say the user is occupied.",
+    emotional: `They're sharing something EMOTIONAL. Show care as ${ASSISTANT_DISPLAY_NAME}, then say you will make sure the user sees it.`,
+    statement: `They said something general. Acknowledge briefly as ${ASSISTANT_DISPLAY_NAME} and say the user is occupied.`,
     farewell: "They're ending or acknowledging the chat. Close smoothly in the user's usual style with this contact, often very short.",
-    insult: "They're being rude or insulting. Respond with a WITTY and smart-aleck comeback as BusyBot. Show personality and be a bit cheeky, but don't be mean.",
+    insult: `They're being rude or insulting. Respond with a witty comeback as ${ASSISTANT_DISPLAY_NAME}. Show a little character, but don't be mean.`,
+    identity: `They are asking who you are or what you do. Explain that you are ${ASSISTANT_DISPLAY_NAME}, the user's AI personal assistant. Say you help handle messages only when busy mode is on and only for saved auto-reply contacts.`,
+    security: `They are asking about privacy/security. Explain carefully: you are ${ASSISTANT_DISPLAY_NAME}, you only reply when busy mode is on and the contact is allowed, you do not ask for passwords/OTP/private codes, and you pass sensitive matters to the user.`,
   };
   const intentAdvice = intentGuide[intentData.intent] || intentGuide.statement;
 
@@ -1258,23 +1304,30 @@ async function generateSmartReply(
   };
   const sentimentAdvice = sentimentGuide[intentData.sentiment] || sentimentGuide.neutral;
 
-  const systemPrompt = `You are BusyBot, the personal AI assistant for ${userDisplayName || "the user"}.
+  const systemPrompt = `You are ${ASSISTANT_DISPLAY_NAME}, the personal AI assistant for ${userDisplayName || "the user"}.
 Your job is to handle incoming messages while the user is busy.
 
 CRITICAL RULES:
-1. ROLE: You are an assistant (BusyBot). Never claim to be the user.
+1. ROLE: You are ${ASSISTANT_DISPLAY_NAME}, an assistant. Never claim to be the user.
 2. LIMITS: Never make decisions, appointments, or promises for the user.
-3. BEHAVIOR: If this is a new conversation (no history), introduce yourself as BusyBot. If you have already spoken in the history, DO NOT introduce yourself again. Just continue the chat.
-4. VARIETY: Use natural, conversational phrasing. DO NOT start every message by saying someone is busy. Only mention it if they ask where he is or for a meeting.
-5. PERSONALITY: Be smart, cool, and a bit witty if someone is rude or asks who you are.
-6. LANGUAGE & GRAMMAR: Match the contact's exact language/dialect (e.g., Romanized Tanglish, Hinglish). Use CORRECT grammar for that dialect.
+3. BEHAVIOR: If this is a new conversation (no history), introduce yourself as ${ASSISTANT_DISPLAY_NAME}. If you have already spoken in the history, DO NOT introduce yourself again. Just continue the chat.
+4. CONTACT SAFETY: This message is eligible only because Busy Mode is on, this is not a group chat, and the contact is saved with Auto-Reply enabled.
+5. MEMORY: Use conversation history to understand context, previous topics, names, and pending questions. Do not imitate the user's private writing style.
+6. TONE: Always use the user's selected ${ASSISTANT_DISPLAY_NAME} tone: ${tone}. ${getReplyToneGuide(tone)}
+7. VARIETY: Use natural, conversational phrasing. DO NOT start every message by saying someone is busy. Only mention it when useful.
+8. PERSONALITY: Be smart, friendly, and a bit witty if someone is rude or asks who you are.
+9. LANGUAGE & GRAMMAR: Reply in the contact's language/dialect (English, Hindi, Hinglish, Tamil, Tanglish, or mixed language). Use CORRECT grammar for that dialect.
    - For Tanglish: Use "naan sollren" (I will tell) or "avar solluvaaru" (he will tell). Don't mix them.
    - For Hinglish: Use "main bolunga" (I will say) or "wo bolenge" (he will say).
-7. LENGTH: Keep it short (1-2 sentences).
+10. LENGTH: Keep it short (1-2 sentences).
+11. IF ASKED ABOUT YOURSELF: Say you are ${ASSISTANT_DISPLAY_NAME}, ${userDisplayName || "the user"}'s AI personal assistant. You understand messages and reply only when allowed by busy mode and contact settings.
+12. IF ASKED ABOUT SECURITY/PRIVACY: Be honest and calm. Say you do not ask for passwords, OTPs, bank details, or private codes. Sensitive matters should go directly to ${userDisplayName || "the user"}.
+13. IF ASKED ABOUT PRINCE/THE USER: Use saved chat context if present. If context is missing, say ${userDisplayName || "the user"} is busy and you will pass the question to them. Do not invent personal facts.
 
 CONTEXT FOR THIS MESSAGE:
 - Goal: ${intentAdvice}
 - Tone: ${sentimentAdvice}
+- Relationship: ${relationshipGuide}
 
 STYLE EXAMPLES (VIBE ONLY):
 - "Enna matter? Naan avar kitta sollren. Any update?"
@@ -1286,7 +1339,7 @@ ${historyStr}
 
 CONTACT'S NEW MESSAGE: "${incomingMessage}"
 
-Reply as BusyBot in the contact's language:`;
+Reply as ${ASSISTANT_DISPLAY_NAME} in the contact's language:`;
 
   const providerUrl = aiConfig.endpoint;
   const BASE_MAX_TOKENS = 384;
@@ -1592,11 +1645,12 @@ serve(async (req) => {
         .eq("user_id", userId)
         .single();
       const userDisplayName = await resolveUserDisplayName(userId, profile?.display_name);
+      const contactNumberVariants = getContactNumberLookupVariants(contactNumber);
       const { data: contactRule } = await supabase
         .from("contact_rules")
         .select("*")
         .eq("user_id", userId)
-        .eq("contact_number", contactNumber)
+        .in("contact_number", contactNumberVariants)
         .maybeSingle();
 
       // Find or create conversation
@@ -1735,10 +1789,13 @@ serve(async (req) => {
       }
       console.log(`[${userId}] Busy mode is ON. Proceeding with reply logic.`);
 
-      // Fetch personality and recent history before policy so closings like "hmm/ok/bye"
-      // can be handled smoothly when BusyBot is already in the exchange.
-      // Personality training integration removed per user request
-      const personality = null;
+      // Keep chat memory, but drive reply style from the selected assistant tone.
+      const personality = {
+        tone: normalizeReplyTone(settings.reply_tone),
+        avg_length: normalizeReplyTone(settings.reply_tone) === "concise" ? 10 : 18,
+        emoji_usage: normalizeReplyTone(settings.reply_tone) !== "professional",
+        learned_style: {},
+      };
 
       const { data: recentMessages, error: historyError } = await supabase
         .from("messages")
@@ -1764,9 +1821,49 @@ serve(async (req) => {
         continue;
       }
 
+      if (!contactRule) {
+        console.log(`[${userId}] Skipping unsaved contact: ${contactNumber}`);
+        await logReplyEvent({
+          userId,
+          conversationId: conversation.id,
+          stage: "contact_rule_check",
+          status: "skipped",
+          reason: "contact_not_saved",
+          riskLevel: "low",
+        });
+        results.push({ user_id: userId, action: "skip_unsaved_contact" });
+        continue;
+      }
+
       if (contactRule?.behavior === "ignore") {
         console.log(`[${userId}] Skipping ignored contact: ${contactNumber}`);
         results.push({ user_id: userId, action: "skip_ignored_contact" });
+        continue;
+      }
+
+      if (contactRule?.behavior === "manual_review") {
+        const draftForReview = applyAssistantDisclosure(
+          buildAssistantHandoffReply(text, contactName, userDisplayName, intentData, { alreadyIntroduced }),
+          userDisplayName,
+          recentMessages || []
+        );
+        await supabase.from("approval_queue").insert({
+          user_id: userId,
+          conversation_id: conversation.id,
+          contact_number: contactNumber,
+          incoming_message: text,
+          draft_reply: draftForReview,
+          risk_level: "medium",
+          status: "pending",
+          review_note: "contact_manual_review",
+        });
+        results.push({ user_id: userId, action: "manual_review_required", reason: "contact_manual_review" });
+        continue;
+      }
+
+      if (contactRule?.behavior !== "auto_reply") {
+        console.log(`[${userId}] Contact is saved but not set to auto-reply: ${contactNumber}`);
+        results.push({ user_id: userId, action: "skip_contact_not_auto_reply", behavior: contactRule?.behavior });
         continue;
       }
 
@@ -1857,6 +1954,7 @@ serve(async (req) => {
           "__PROVIDER_FAILED__",
           intentData,
           relationship,
+          normalizeReplyTone(settings.reply_tone),
           userDisplayName
         );
 
@@ -1915,17 +2013,17 @@ serve(async (req) => {
         } else if (intentData.intent === "question") {
           const questionReplies = [
             buildAssistantHandoffReply(text, contactName, userDisplayName, intentData, { alreadyIntroduced }),
-            `BusyBot here. ${userDisplayName || "the user"} is busy right now, so I will pass your question to ${userDisplayName || "the user"}.`,
-            `BusyBot here. I have noted this and will pass it to ${userDisplayName || "the user"} when they are free.`,
+            `${ASSISTANT_DISPLAY_NAME} here. ${userDisplayName || "the user"} is busy right now, so I will pass your question to ${userDisplayName || "the user"}.`,
+            `${ASSISTANT_DISPLAY_NAME} here. I have noted this and will pass it to ${userDisplayName || "the user"} when they are free.`,
           ];
           replyText = questionReplies[Math.floor(Math.random() * questionReplies.length)];
         } else if (intentData.intent === "request") {
           replyText = buildAssistantHandoffReply(text, contactName, userDisplayName, intentData, { alreadyIntroduced });
         } else if (intentData.intent === "follow_up") {
           const followUps = [
-            `${namePrefix}BusyBot here. ${userDisplayName || "the user"} is still busy, but they are not ignoring you. I will remind them.`,
-            `BusyBot here. ${userDisplayName || "the user"} is caught up right now and will reply when free.`,
-            `${namePrefix}BusyBot here. I saw your messages and will make sure ${userDisplayName || "the user"} sees them soon.`,
+            `${namePrefix}${ASSISTANT_DISPLAY_NAME} here. ${userDisplayName || "the user"} is still busy, but they are not ignoring you. I will remind them.`,
+            `${ASSISTANT_DISPLAY_NAME} here. ${userDisplayName || "the user"} is caught up right now and will reply when free.`,
+            `${namePrefix}${ASSISTANT_DISPLAY_NAME} here. I saw your messages and will make sure ${userDisplayName || "the user"} sees them soon.`,
           ];
           replyText = followUps[Math.floor(Math.random() * followUps.length)];
         } else if (urgency === "emergency" || urgency === "important") {
@@ -2044,7 +2142,7 @@ serve(async (req) => {
               conversationId: conversation.id,
               stage: "attention_required",
               status: "attention_required",
-              reason: "New greeting engaged by BusyBot; user may need to follow up.",
+              reason: `New greeting engaged by ${ASSISTANT_DISPLAY_NAME}; user may need to follow up.`,
               riskLevel: "low",
               confidenceScore: confidence,
               payload: {

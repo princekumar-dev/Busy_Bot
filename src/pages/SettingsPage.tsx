@@ -31,6 +31,15 @@ const QUICK_MODELS = [
   { id: "mistral-large", label: "Mistral Large", model: "mistral-large", provider: "Mistral", baseUrl: "https://api.airforce/v1" },
 ];
 
+const REPLY_TONES = [
+  { id: "friendly", label: "Friendly" },
+  { id: "professional", label: "Professional" },
+  { id: "casual", label: "Casual" },
+  { id: "warm", label: "Warm" },
+  { id: "concise", label: "Concise" },
+  { id: "playful", label: "Playful" },
+];
+
 
 
 function extractMissingSettingsColumn(message?: string): string | null {
@@ -49,6 +58,7 @@ export default function SettingsPage() {
   const [strictAssistantMode, setStrictAssistantMode] = useState(true);
   const [busyTestMode, setBusyTestMode] = useState(false);
   const [autoReplyText, setAutoReplyText] = useState("");
+  const [replyTone, setReplyTone] = useState("friendly");
   const [aiProviderName, setAiProviderName] = useState(DEFAULT_API_AIRFORCE_PROVIDER_NAME);
   const [aiApiKey, setAiApiKey] = useState(DEFAULT_API_AIRFORCE_API_KEY);
   const [aiModel, setAiModel] = useState(DEFAULT_API_AIRFORCE_MODEL);
@@ -71,6 +81,7 @@ export default function SettingsPage() {
           setStrictAssistantMode((data as any).strict_assistant_mode ?? true);
           setBusyTestMode((data as any).busy_test_mode ?? false);
           setAutoReplyText(data.auto_reply_text || "");
+          setReplyTone((data as any).reply_tone || "friendly");
           setAiProviderName((data as any).ai_provider_name || DEFAULT_API_AIRFORCE_PROVIDER_NAME);
           setAiApiKey((data as any).ai_api_key || DEFAULT_API_AIRFORCE_API_KEY);
           const savedModel = (data as any).ai_model;
@@ -141,6 +152,7 @@ export default function SettingsPage() {
       strict_assistant_mode: strictAssistantMode,
       busy_test_mode: busyTestMode,
       auto_reply_text: autoReplyText,
+      reply_tone: replyTone,
       ai_provider: AI_PROVIDER,
       ai_provider_name: trimmedProviderName || DEFAULT_API_AIRFORCE_PROVIDER_NAME,
       ai_api_key: trimmedApiKey || DEFAULT_API_AIRFORCE_API_KEY,
@@ -271,6 +283,31 @@ export default function SettingsPage() {
               <p className="text-xs text-muted-foreground">Get notified for urgent messages instead of auto-replying</p>
             </div>
             <Switch checked={emergencyNotify} onCheckedChange={setEmergencyNotify} />
+          </div>
+        </div>
+
+        <div className="glass rounded-xl p-6 md:col-span-2">
+          <div className="mb-4 flex items-center gap-3">
+            <Volume2 className="h-4 w-4 text-primary" />
+            <h3 className="font-display text-base font-semibold text-foreground">Reply Tone</h3>
+          </div>
+          <div className="grid gap-2">
+            <Label className="font-display text-sm text-foreground">BusyBot tone</Label>
+            <Select value={replyTone} onValueChange={setReplyTone}>
+              <SelectTrigger className="border-border bg-secondary/50">
+                <SelectValue placeholder="Select a tone" />
+              </SelectTrigger>
+              <SelectContent className="glass border-border">
+                {REPLY_TONES.map((tone) => (
+                  <SelectItem key={tone.id} value={tone.id}>
+                    {tone.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Chat history is still used for context and memory, but replies use this BusyBot tone instead of copying your personal writing style.
+            </p>
           </div>
         </div>
 
